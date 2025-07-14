@@ -1,0 +1,12 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "predeploy": [
+        "pnpm --prefix \"$RESOURCE_DIR\" run lint",
+        "pnpm --prefix \"$RESOURCE_DIR\" run build"
+      ]
+    }
+  ]
+}
