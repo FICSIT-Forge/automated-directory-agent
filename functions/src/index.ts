@@ -67,4 +67,5 @@ export const menuSuggestion = onCallGenkit({
 
   // Grant access to the API key to this function:
   secrets: [apiKey],
+  // cors: true,
 }, menuSuggestionFlow);
