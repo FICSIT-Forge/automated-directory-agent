@@ -24,6 +24,8 @@
     extensions = [
       "vscodevim.vim"
       "ms-vscode.js-debug"
+      "bradlc.vscode-tailwindcss"
+      "Vue.volar"
     ];
 
     # Enable previews
