@@ -1,0 +1,11 @@
+---
+model: googleai/gemini-2.5-flash
+input:
+  schema:
+    question: string
+---
+{{role "system"}}
+{{>personality}}
+
+{{role "user"}}
+{{question}}

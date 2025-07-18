@@ -1,6 +1,6 @@
 // Import the Genkit core libraries and plugins.
-import {genkit, z} from "genkit";
-import {googleAI} from "@genkit-ai/googleai";
+import { genkit } from "genkit";
+import { googleAI } from "@genkit-ai/googleai";
 
 // Cloud Functions for Firebase supports Genkit natively. The onCallGenkit function creates a callable
 // function from a Genkit action. It automatically implements streaming if your flow does.
@@ -16,31 +16,25 @@ const apiKey = defineSecret("GEMINI_API_KEY");
 
 // The Firebase telemetry plugin exports a combination of metrics, traces, and logs to Google Cloud
 // Observability. See https://firebase.google.com/docs/genkit/observability/telemetry-collection.
-import {enableFirebaseTelemetry} from "@genkit-ai/firebase";
+import { enableFirebaseTelemetry } from "@genkit-ai/firebase";
 enableFirebaseTelemetry();
 
 const ai = genkit({
-  plugins: [
-    googleAI(),
-  ],
-  model: googleAI.model('gemini-2.5-flash'),
+  plugins: [googleAI()],
+  model: googleAI.model("gemini-2.5-flash"),
 });
 
-// Define a simple flow that prompts an LLM to generate menu suggestions.
-const menuSuggestionFlow = ai.defineFlow({
-    name: "menuSuggestionFlow",
-    inputSchema: z.string().describe("A restaurant theme").default("seafood"),
-    outputSchema: z.string(),
-    streamSchema: z.string(),
-  }, async (subject, { sendChunk }) => {
+const adagentFlow = ai.defineFlow(
+  {
+    name: "adagentFlow",
+  },
+  async (question, { sendChunk }) => {
+    // Construct prompt using prompts/adagent.prompt.
+    const adagentPrompt = ai.prompt("adagent");
+
     // Construct a request and send it to the model API.
-    const prompt =
-      `Suggest an item for the menu of a ${subject} themed restaurant`;
-    const { response, stream } = ai.generateStream({
-      prompt: prompt,
-      config: {
-        temperature: 1,
-      },
+    const { response, stream } = adagentPrompt.stream({
+      question: question,
     });
 
     for await (const chunk of stream) {
@@ -52,20 +46,23 @@ const menuSuggestionFlow = ai.defineFlow({
     // response into structured output or chain the response into another
     // LLM call, etc.
     return (await response).text;
-  }
+  },
 );
 
-export const menuSuggestion = onCallGenkit({
-  // Uncomment to enable AppCheck. This can reduce costs by ensuring only your Verified
-  // app users can use your API. Read more at https://firebase.google.com/docs/app-check/cloud-functions
-  // enforceAppCheck: true,
+export const adagent = onCallGenkit(
+  {
+    // Uncomment to enable AppCheck. This can reduce costs by ensuring only your Verified
+    // app users can use your API. Read more at https://firebase.google.com/docs/app-check/cloud-functions
+    // enforceAppCheck: true,
 
-  // authPolicy can be any callback that accepts an AuthData (a uid and tokens dictionary) and the
-  // request data. The isSignedIn() and hasClaim() helpers can be used to simplify. The following
-  // will require the user to have the email_verified claim, for example.
-  // authPolicy: hasClaim("email_verified"),
+    // authPolicy can be any callback that accepts an AuthData (a uid and tokens dictionary) and the
+    // request data. The isSignedIn() and hasClaim() helpers can be used to simplify. The following
+    // will require the user to have the email_verified claim, for example.
+    // authPolicy: hasClaim("email_verified"),
 
-  // Grant access to the API key to this function:
-  secrets: [apiKey],
-  // cors: true,
-}, menuSuggestionFlow);
+    // Grant access to the API key to this function:
+    secrets: [apiKey],
+    // cors: true,
+  },
+  adagentFlow,
+);

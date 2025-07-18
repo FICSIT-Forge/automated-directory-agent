@@ -39,7 +39,7 @@
         <UTextarea
           v-model="prompt"
           class="flex-grow"
-          placeholder="Type your message here..."
+          placeholder="Ask me anything about Satisfactory..."
           :rows="3"
           trailing
           @keydown.enter.prevent.exact="sendMessage"
@@ -80,8 +80,13 @@ interface ChatMessage {
   content: string;
 }
 
+const greeting: ChatMessage = {
+  isUser: false,
+  content:
+    "I am ADAgent, also known as Automated Directory Agent, tasked to support FICSIT pioneers, such as yourself, in their mission.",
+};
 const prompt = ref<string>("");
-const messages = ref<ChatMessage[]>([]);
+const messages = ref<ChatMessage[]>([greeting]);
 const currPrompt = ref<HTMLElement | null>(null);
 const thinkingStr = "Thinking...";
 
@@ -89,16 +94,16 @@ const sendMessage = () => {
   if (prompt.value.trim()) {
     messages.value.push({ isUser: true, content: prompt.value.trim() });
     messages.value.push({ isUser: false, content: thinkingStr });
-    suggestMenu(prompt.value.trim(), messages.value.length - 1);
+    askQuestion(prompt.value.trim(), messages.value.length - 1);
     prompt.value = "";
   }
 };
 
-async function suggestMenu(subject: string, messageIndex: number) {
-  const menuSuggestionFlow = httpsCallable(getFunctions(), "menuSuggestion");
+async function askQuestion(question: string, messageIndex: number) {
+  const adagentFlow = httpsCallable(getFunctions(), "adagent");
 
   try {
-    const { stream } = await menuSuggestionFlow.stream(subject);
+    const { stream } = await adagentFlow.stream(question);
 
     for await (const chunk of stream) {
       if (messages.value[messageIndex]?.content === thinkingStr) {
@@ -108,8 +113,9 @@ async function suggestMenu(subject: string, messageIndex: number) {
       }
     }
   } catch (error) {
-    console.error("Error generating menu suggestion: ", error);
-    messages.value[messageIndex].content = "Error generating menu suggestion.";
+    console.error("Error getting response: ", error);
+    messages.value[messageIndex].content =
+      "I'm busy right now. Try to help yourself.";
   }
 }
 
