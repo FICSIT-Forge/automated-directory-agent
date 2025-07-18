@@ -16,9 +16,21 @@
     >
       <div class="w-full max-w-3xl flex-grow overflow-y-auto">
         <!-- Chat messages will be rendered here -->
-        <div v-for="(message, index) in messages" :key="index" class="mb-2">
-          <UCard class="max-w-sm bg-accented rounded-2xl">
-            {{ message }}
+        <div
+          v-for="(message, index) in messages"
+          :key="index"
+          :ref="
+            (el) => {
+              currPrompt = el as HTMLElement;
+            }
+          "
+          class="mb-2"
+        >
+          <UCard
+            class="w-full rounded-2xl"
+            :class="{ 'bg-accented': message.isUser }"
+          >
+            <div v-html="renderMarkdown(message.content)" />
           </UCard>
         </div>
       </div>
@@ -48,14 +60,73 @@
   </div>
 </template>
 
-<script setup>
-const prompt = ref("");
-const messages = ref([]);
+<script setup lang="ts">
+import { initializeApp } from "firebase/app";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { marked } from "marked";
+
+// Initialize Firebase on the client-side for Prerendering.
+onMounted(async () => {
+  try {
+    const firebaseConfig = await fetch("/__/firebase/init.json");
+    initializeApp(await firebaseConfig.json());
+  } catch (error) {
+    console.error("Error initializing Firebase:", error);
+  }
+});
+
+interface ChatMessage {
+  isUser: boolean;
+  content: string;
+}
+
+const prompt = ref<string>("");
+const messages = ref<ChatMessage[]>([]);
+const currPrompt = ref<HTMLElement | null>(null);
+const thinkingStr = "Thinking...";
 
 const sendMessage = () => {
   if (prompt.value.trim()) {
-    messages.value.push(prompt.value.trim());
+    messages.value.push({ isUser: true, content: prompt.value.trim() });
+    messages.value.push({ isUser: false, content: thinkingStr });
+    suggestMenu(prompt.value.trim(), messages.value.length - 1);
     prompt.value = "";
   }
 };
+
+async function suggestMenu(subject: string, messageIndex: number) {
+  const menuSuggestionFlow = httpsCallable(getFunctions(), "menuSuggestion");
+
+  try {
+    const { stream } = await menuSuggestionFlow.stream(subject);
+
+    for await (const chunk of stream) {
+      if (messages.value[messageIndex]?.content === thinkingStr) {
+        messages.value[messageIndex].content = chunk as string;
+      } else {
+        messages.value[messageIndex].content += chunk as string;
+      }
+    }
+  } catch (error) {
+    console.error("Error generating menu suggestion: ", error);
+    messages.value[messageIndex].content = "Error generating menu suggestion.";
+  }
+}
+
+const renderMarkdown = (markdownText: string) => {
+  return marked(markdownText);
+};
+
+watch(
+  messages,
+  () => {
+    // Ensure the DOM is updated before attempting to scroll
+    nextTick(() => {
+      if (currPrompt.value) {
+        currPrompt.value.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  },
+  { deep: true },
+);
 </script>
