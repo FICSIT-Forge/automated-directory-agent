@@ -17,7 +17,7 @@
 
   # Sets environment variables in the workspace
   env = {
-    GEMINI_API_KEY = "AIzaSyCMBMXCoFSEFEoiz-yqUajQdwXaRvsQgMI";
+    GEMINI_API_KEY = "your-api-key";
   };
   idx = {
     # Search for the extensions you want on https://open-vsx.org/ and use "publisher.id"
