@@ -63,14 +63,29 @@
 
 <script setup lang="ts">
 import { initializeApp } from "firebase/app";
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+} from "firebase/app-check";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { marked } from "marked";
+
+const config = useRuntimeConfig();
+
+// import { getAnalytics } from "firebase/analytics";
 
 // Initialize Firebase on the client-side for Prerendering.
 onMounted(async () => {
   try {
     const firebaseConfig = await fetch("/__/firebase/init.json");
-    initializeApp(await firebaseConfig.json());
+    const app = initializeApp(await firebaseConfig.json());
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(
+        config.public.recaptchaSiteKey as string,
+      ),
+      isTokenAutoRefreshEnabled: true, // Set to true to allow auto-refresh.
+    });
+    // const analytics = getAnalytics(app);
   } catch (error) {
     console.error("Error initializing Firebase:", error);
   }

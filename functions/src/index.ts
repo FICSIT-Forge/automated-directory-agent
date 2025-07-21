@@ -1,6 +1,4 @@
-// Import the Genkit core libraries and plugins.
-import { genkit } from "genkit";
-import { googleAI } from "@genkit-ai/googleai";
+import { ai } from "./genkit";
 
 // Cloud Functions for Firebase supports Genkit natively. The onCallGenkit function creates a callable
 // function from a Genkit action. It automatically implements streaming if your flow does.
@@ -18,11 +16,6 @@ const apiKey = defineSecret("GEMINI_API_KEY");
 // Observability. See https://firebase.google.com/docs/genkit/observability/telemetry-collection.
 import { enableFirebaseTelemetry } from "@genkit-ai/firebase";
 enableFirebaseTelemetry();
-
-const ai = genkit({
-  plugins: [googleAI()],
-  model: googleAI.model("gemini-2.5-flash"),
-});
 
 const adagentFlow = ai.defineFlow(
   {
@@ -53,7 +46,7 @@ export const adagent = onCallGenkit(
   {
     // Uncomment to enable AppCheck. This can reduce costs by ensuring only your Verified
     // app users can use your API. Read more at https://firebase.google.com/docs/app-check/cloud-functions
-    // enforceAppCheck: true,
+    enforceAppCheck: true,
 
     // authPolicy can be any callback that accepts an AuthData (a uid and tokens dictionary) and the
     // request data. The isSignedIn() and hasClaim() helpers can be used to simplify. The following

@@ -4,4 +4,9 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ["@nuxt/eslint", "@nuxt/ui", "@nuxt/test-utils", "@nuxtjs/mdc"],
   css: ["~/assets/css/main.css"],
+  runtimeConfig: {
+    public: {
+      recaptchaSiteKey: "",
+    },
+  },
 });

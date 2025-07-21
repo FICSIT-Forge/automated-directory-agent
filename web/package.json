@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint --fix",
     "format": "prettier --write .",
-    "deploy": "firebase deploy --only hosting"
+    "deploy": "firebase deploy --only hosting:adagent"
   },
   "directories": {
     "serve": ".output/public"
