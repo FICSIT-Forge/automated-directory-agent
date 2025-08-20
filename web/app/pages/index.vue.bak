@@ -1,0 +1,154 @@
+<template>
+  <div class="flex flex-col h-screen">
+    <!-- Fixed Header -->
+    <div
+      class="fixed top-0 left-0 w-full bg-white dark:bg-gray-900 z-10 p-4 text-center shadow-md"
+    >
+      <div class="flex flex-row">
+        <img src="/ADALogo.png" alt="ADA" class="max-h-12" >
+        <h1 class="font-bold text-2xl text-(--ui-primary) self-end">gent</h1>
+        <ColorModeButton class="ml-auto" />
+      </div>
+    </div>
+
+    <!-- Main content area and Textarea container (centered and limited width) -->
+    <div
+      class="flex-grow overflow-y-auto pt-16 pb-4 px-4 flex flex-col justify-between items-center"
+    >
+      <div class="w-full max-w-3xl flex-grow overflow-y-auto">
+        <!-- Chat messages will be rendered here -->
+        <div
+          v-for="(message, index) in messages"
+          :key="index"
+          :ref="
+            (el) => {
+              currPrompt = el as HTMLElement;
+            }
+          "
+          class="mb-2"
+        >
+          <UCard
+            class="w-full rounded-2xl"
+            :class="{ 'bg-accented': message.isUser }"
+          >
+            <div v-html="renderMarkdown(message.content)" />
+          </UCard>
+        </div>
+      </div>
+      <!-- Textarea at the bottom -->
+      <div class="w-full max-w-3xl mt-4 flex">
+        <UTextarea
+          v-model="prompt"
+          class="flex-grow"
+          placeholder="Ask me anything about Satisfactory..."
+          :rows="3"
+          trailing
+          @keydown.enter.prevent.exact="sendMessage"
+        >
+          <template #trailing>
+            <UButton
+              size="xl"
+              :disabled="!prompt.trim()"
+              color="gray"
+              variant="ghost"
+              icon="i-lucide-send"
+              @click="sendMessage"
+            />
+          </template>
+        </UTextarea>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { initializeApp } from "firebase/app";
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+} from "firebase/app-check";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { marked } from "marked";
+
+const config = useRuntimeConfig();
+
+// import { getAnalytics } from "firebase/analytics";
+
+// Initialize Firebase on the client-side for Prerendering.
+onMounted(async () => {
+  try {
+    const firebaseConfig = await fetch("/__/firebase/init.json");
+    const app = initializeApp(await firebaseConfig.json());
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(
+        config.public.recaptchaSiteKey as string,
+      ),
+      isTokenAutoRefreshEnabled: true, // Set to true to allow auto-refresh.
+    });
+    // const analytics = getAnalytics(app);
+  } catch (error) {
+    console.error("Error initializing Firebase:", error);
+  }
+});
+
+interface ChatMessage {
+  isUser: boolean;
+  content: string;
+}
+
+const greeting: ChatMessage = {
+  isUser: false,
+  content:
+    "I am **ADAgent**, also known as Automated Directory Agent, tasked to support FICSIT pioneers, such as yourself, in their mission.",
+};
+const prompt = ref<string>("");
+const messages = ref<ChatMessage[]>([greeting]);
+const currPrompt = ref<HTMLElement | null>(null);
+const thinkingStr = "Thinking...";
+
+const sendMessage = () => {
+  if (prompt.value.trim()) {
+    messages.value.push({ isUser: true, content: prompt.value.trim() });
+    messages.value.push({ isUser: false, content: thinkingStr });
+    askQuestion(prompt.value.trim(), messages.value.length - 1);
+    prompt.value = "";
+  }
+};
+
+async function askQuestion(question: string, messageIndex: number) {
+  const adagentFlow = httpsCallable(getFunctions(), "adagent");
+
+  try {
+    const { stream } = await adagentFlow.stream(question);
+
+    for await (const chunk of stream) {
+      if (messages.value[messageIndex]?.content === thinkingStr) {
+        messages.value[messageIndex].content = chunk as string;
+      } else {
+        messages.value[messageIndex].content += chunk as string;
+      }
+    }
+  } catch (error) {
+    console.error("Error getting response: ", error);
+    messages.value[messageIndex].content =
+      "I'm busy right now. Try to help yourself.";
+  }
+}
+
+const renderMarkdown = (markdownText: string) => {
+  return marked(markdownText);
+};
+
+watch(
+  messages,
+  () => {
+    // Ensure the DOM is updated before attempting to scroll
+    nextTick(() => {
+      if (currPrompt.value) {
+        currPrompt.value.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  },
+  { deep: true },
+);
+</script>
