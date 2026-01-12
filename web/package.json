@@ -17,22 +17,25 @@
     "serve": ".output/public"
   },
   "dependencies": {
-    "@nuxt/ui": "^3.2.0",
-    "@nuxtjs/mdc": "0.17.2",
-    "firebase": "^11.10.0",
-    "marked": "^16.1.1",
-    "nuxt": "^4.0.0",
-    "tailwindcss": "^4.1.11",
-    "uuid": "^11.1.0"
+    "@ai-sdk/vue": "^2.0.115",
+    "@nuxt/ui": "^4.2.1",
+    "@nuxtjs/mdc": "0.19.1",
+    "@types/uuid": "^11.0.0",
+    "ai": "^5.0.115",
+    "firebase": "^12.7.0",
+    "marked": "^17.0.1",
+    "nuxt": "^4.2.2",
+    "tailwindcss": "^4.1.18",
+    "uuid": "^13.0.0"
   },
-  "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
+  "packageManager": "pnpm@10.27.0",
   "devDependencies": {
-    "@iconify-json/lucide": "^1.2.63",
-    "@nuxt/eslint": "1.5.2",
-    "@nuxt/test-utils": "3.19.2",
-    "@tailwindcss/typography": "^0.5.16",
-    "eslint": "^9.31.0",
-    "prettier": "^3.6.2",
-    "typescript": "^5.8.3"
+    "@iconify-json/lucide": "^1.2.81",
+    "@nuxt/eslint": "1.12.1",
+    "@nuxt/test-utils": "3.21.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "eslint": "^9.39.2",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
   }
 }
