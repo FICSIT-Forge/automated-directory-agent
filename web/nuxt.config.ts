@@ -6,7 +6,7 @@ export default defineNuxtConfig({
   css: ["~/assets/css/main.css"],
   runtimeConfig: {
     public: {
-      recaptchaSiteKey: "",
+      recaptchaSiteKey: "6LeJsoorAAAAALd5sWG1u0ODniWoGbsVUuNFLHoS",
     },
   },
 });

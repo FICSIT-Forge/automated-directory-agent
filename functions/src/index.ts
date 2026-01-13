@@ -21,29 +21,34 @@ const adagentFlow = ai.defineFlow(
   {
     name: "adagentFlow",
   },
-  async (question, { sendChunk }) => {
-    // Construct prompt using prompts/adagent.prompt.
-    const adagentPrompt = ai.prompt("adagent");
+  async (input, { sendChunk }) => {
+    try {
+      // Construct prompt using prompts/adagent.prompt.
+      const adagentPrompt = ai.prompt("adagent");
 
-    // Construct a request and send it to the model API.
-    const { response, stream } = adagentPrompt.stream({
-      question: question,
-    });
+      // The prompt expects { question: string } based on the schema
+      const { response, stream } = adagentPrompt.stream({ question: input });
 
-    for await (const chunk of stream) {
-      sendChunk(chunk.text);
+      for await (const chunk of stream) {
+        console.log("Chunk received:", JSON.stringify(chunk));
+        sendChunk(chunk.text);
+      }
+
+      // Handle the response from the model API. In this sample, we just
+      // convert it to a string, but more complicated flows might coerce the
+      // response into structured output or chain the response into another
+      // LLM call, etc.
+      return (await response).text;
+    } catch (e) {
+      console.error("ADAGENT FLOW ERROR:", e);
+      throw e;
     }
-
-    // Handle the response from the model API. In this sample, we just
-    // convert it to a string, but more complicated flows might coerce the
-    // response into structured output or chain the response into another
-    // LLM call, etc.
-    return (await response).text;
   },
 );
 
 export const adagent = onCallGenkit(
   {
+    // Force redeploy
     // Uncomment to enable AppCheck. This can reduce costs by ensuring only your Verified
     // app users can use your API. Read more at https://firebase.google.com/docs/app-check/cloud-functions
     enforceAppCheck: true,
