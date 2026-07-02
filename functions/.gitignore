@@ -14,3 +14,12 @@ firebase-debug.log
 
 # Genkit
 .genkit/
+
+# Test coverage reports
+coverage/
+
+# Eval query-embedding cache (regenerated on demand)
+eval/.query-embedding-cache.json
+
+# Reddit miner output — raw input for hand-labeling, not an artifact
+eval/reddit-candidates.json

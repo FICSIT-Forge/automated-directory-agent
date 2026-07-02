@@ -1,24 +1,28 @@
 import * as fs from "fs";
-import type {
-  GameEntity,
-  ItemEntity,
-  RecipeEntity,
-  ManufacturerEntity,
-  GeneratorEntity,
-  ExtractorEntity,
-  SchematicEntity,
-  VehicleEntity,
-  ResolvedAmount,
-  GeneratorFuel,
+import {
+  isSchematicType,
+  schematicTypeLabel,
+  type GameEntity,
+  type ItemEntity,
+  type RecipeEntity,
+  type ManufacturerEntity,
+  type GeneratorEntity,
+  type ExtractorEntity,
+  type SchematicEntity,
+  type SchematicType,
+  type VehicleEntity,
+  type ResolvedAmount,
+  type GeneratorFuel,
 } from "./types.js";
 import {
   extractClassName,
   parseItemAmountList,
   parseClassList,
   parseSchematicUnlocks,
+  parseSchematicDependencies,
 } from "./rawParser.js";
 
-// ─── Raw JSON structure from Docs-en-US-UTF-8.json ───────────────────────────
+// ─── Raw JSON structure of the Docs-en-US-UTF-8-*.json game data export ─────
 
 interface RawClass {
   ClassName: string;
@@ -72,6 +76,13 @@ const RECIPE_PATTERN = "FGRecipe'";
 const CUSTOMIZATION_RECIPE_PATTERN = "FGCustomizationRecipe";
 const SCHEMATIC_PATTERN = "FGSchematic";
 
+const DESC_PREFIX = "Desc_";
+const BUILD_PREFIX = "Build_";
+
+// The game marks removed MAM research as "Discontinued - X": dead content
+// that would otherwise crowd out real schematics in progression retrieval.
+const DISCONTINUED_PREFIX = "Discontinued";
+
 const WORKBENCH_EXCLUSIONS = [
   "WorkBench",
   "WorkshopComponent",
@@ -86,7 +97,7 @@ const FORM_LABELS: Record<string, string> = {
 
 // ─── Module-level helpers ─────────────────────────────────────────────────────
 
-function matchesAny(nc: string, patterns: string[]): boolean {
+function matchesAny(nc: string, patterns: readonly string[]): boolean {
   return patterns.some((p) => nc.includes(p));
 }
 
@@ -94,8 +105,20 @@ function matchesAny(nc: string, patterns: string[]): boolean {
 
 export class DataParser {
   private rawData: RawData[] = [];
+  private hardDriveRecipeClasses = new Set<string>();
 
   constructor(private filePath: string) {}
+
+  /**
+   * Recipe classNames unlocked by EST_Alternate schematics (i.e. obtained via
+   * Hard Drive scans at the MAM). Populated by parse(); consumed by
+   * enrichEntities to tag exactly those recipes with their hard-drive
+   * provenance. Most are alternate recipes, but a few standard recipes share a
+   * hard-drive unlock too.
+   */
+  public get hardDriveRecipes(): ReadonlySet<string> {
+    return this.hardDriveRecipeClasses;
+  }
 
   public async load(): Promise<void> {
     let fileContent = await fs.promises.readFile(this.filePath, "utf-8");
@@ -113,6 +136,7 @@ export class DataParser {
   public parse(): GameEntity[] {
     const nameLookup = this.buildNameLookup();
     const entities: GameEntity[] = [];
+    this.hardDriveRecipeClasses = new Set();
 
     for (const group of this.rawData) {
       const nc = group.NativeClass;
@@ -149,12 +173,23 @@ export class DataParser {
       } else if (nc.includes(SCHEMATIC_PATTERN)) {
         for (const cls of group.Classes) {
           const type = cls.mType as string;
-          if (
-            cls.mDisplayName &&
-            (type === "EST_Milestone" || type === "EST_MAM")
-          ) {
-            entities.push(this.parseSchematic(cls, nc, nameLookup));
+          if (!cls.mDisplayName || !isSchematicType(type)) continue;
+          if ((cls.mDisplayName as string).startsWith(DISCONTINUED_PREFIX))
+            continue;
+          if (type === "EST_Alternate") {
+            // EST_Alternate schematics are obtained by scanning Hard Drives at
+            // the MAM. We don't index them as standalone entities (they crowd
+            // out genuine Milestone/MAM milestones in retrieval); instead we
+            // record exactly which recipes they unlock so the enricher can tag
+            // those recipes with their hard-drive provenance.
+            for (const recipeClass of parseSchematicUnlocks(
+              (cls.mUnlocks as readonly unknown[]) ?? [],
+            )) {
+              this.hardDriveRecipeClasses.add(recipeClass);
+            }
+            continue;
           }
+          entities.push(this.parseSchematic(cls, nc, nameLookup));
         }
       }
       // All other NativeClasses are skipped (structural, cosmetic, etc.)
@@ -174,7 +209,60 @@ export class DataParser {
         }
       }
     }
+    this.resolveDescriptorNames(lookup);
     return lookup;
+  }
+
+  /**
+   * Building descriptors (Desc_X_C) often lack mDisplayName in the source data.
+   * Resolve them via two fallback strategies:
+   *  1. Case-insensitive stem match to the corresponding Build_X_C display name
+   *  2. Recipe display name where this descriptor is the product
+   */
+  private resolveDescriptorNames(lookup: Map<string, string>): void {
+    const buildNamesByStem = this.collectBuildNamesByStem(lookup);
+    const recipeNamesByProduct = this.collectRecipeNamesByProduct();
+
+    for (const group of this.rawData) {
+      for (const cls of group.Classes) {
+        if (lookup.has(cls.ClassName) || !cls.ClassName.startsWith(DESC_PREFIX))
+          continue;
+
+        const stem = cls.ClassName.slice(DESC_PREFIX.length).toLowerCase();
+        const resolved =
+          buildNamesByStem.get(stem) ?? recipeNamesByProduct.get(cls.ClassName);
+
+        if (resolved) lookup.set(cls.ClassName, resolved);
+      }
+    }
+  }
+
+  private collectBuildNamesByStem(
+    lookup: ReadonlyMap<string, string>,
+  ): ReadonlyMap<string, string> {
+    const stems = new Map<string, string>();
+    for (const [className, displayName] of lookup) {
+      if (className.startsWith(BUILD_PREFIX)) {
+        stems.set(
+          className.slice(BUILD_PREFIX.length).toLowerCase(),
+          displayName,
+        );
+      }
+    }
+    return stems;
+  }
+
+  private collectRecipeNamesByProduct(): ReadonlyMap<string, string> {
+    const names = new Map<string, string>();
+    for (const group of this.rawData) {
+      if (!group.NativeClass.includes(RECIPE_PATTERN)) continue;
+      for (const cls of group.Classes) {
+        if (!cls.mDisplayName || !cls.mProduct) continue;
+        const match = (cls.mProduct as string).match(/([\w-]+_C)(?=['"])/);
+        if (match) names.set(match[1], cls.mDisplayName as string);
+      }
+    }
+    return names;
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -442,7 +530,7 @@ export class DataParser {
   ): SchematicEntity {
     const name = cls.mDisplayName as string;
     const desc = this.cleanDescription(cls.mDescription);
-    const type = cls.mType as string;
+    const type = cls.mType as SchematicType;
     const techTier = parseInt((cls.mTechTier as string) || "0", 10);
 
     const cost = parseItemAmountList((cls.mCost as string) || "").map(
@@ -452,28 +540,45 @@ export class DataParser {
       }),
     );
 
-    const unlocks = parseSchematicUnlocks(
-      (cls.mUnlocks as unknown[]) || [],
-    ).map((r) => this.resolveName(r, nameLookup));
+    const unlockClassNames = parseSchematicUnlocks(
+      (cls.mUnlocks as readonly unknown[]) ?? [],
+    );
+    const unlocks = unlockClassNames.map((r) =>
+      this.resolveName(r, nameLookup),
+    );
 
-    const typeLabel = type === "EST_Milestone" ? "Milestone" : "MAM Research";
-    const lines = [
-      `${typeLabel}: ${name}${techTier > 0 ? ` (Tier ${techTier})` : ""}`,
-    ];
+    const prerequisites = parseSchematicDependencies(
+      (cls.mSchematicDependencies as readonly unknown[]) ?? [],
+    )
+      .map((r) => this.resolveName(r, nameLookup))
+      .filter((n) => !n.startsWith("Schematic_")); // filter unresolved classNames
+
+    const label = schematicTypeLabel(type);
+    const tierSuffix = techTier > 0 ? ` (Tier ${techTier})` : "";
+    const lines = [`${label}: ${name}${tierSuffix}`];
     if (desc) lines.push(`Description: ${desc}`);
     if (cost.length > 0)
       lines.push(
         `Cost: ${cost.map((c) => `${c.amount}x ${c.displayName}`).join(", ")}`,
       );
     if (unlocks.length > 0) lines.push(`Unlocks: ${unlocks.join(", ")}`);
+    if (prerequisites.length > 0)
+      lines.push(`Requires: ${prerequisites.join(", ")}`);
 
     return {
       className: cls.ClassName,
       displayName: name,
-      description: desc || `${typeLabel}: ${name}`,
+      description: desc || `${label}: ${name}`,
       nativeClass,
       entityType: "schematic",
-      metadata: { type, techTier, cost, unlocks },
+      metadata: {
+        type,
+        techTier,
+        cost,
+        unlocks,
+        unlockClassNames,
+        prerequisites,
+      },
       embeddingText: lines.join("\n"),
     };
   }

@@ -10,45 +10,12 @@ Genkit Framework Instructions:
 
 # Functions — Backend Context
 
-Firebase Cloud Functions backend for ADAgent. See the root `.claude/CLAUDE.md` for full project context.
+See root `.claude/CLAUDE.md` for project overview, commands, and tech stack.
 
-## Key Source Files
+## Data Pipeline Details
 
-| File                          | Purpose                                                                              |
-| ----------------------------- | ------------------------------------------------------------------------------------ |
-| `src/index.ts`                | `adagentFlow` (Genkit flow) + `adagent` Firebase callable export                     |
-| `src/genkit.ts`               | Genkit init with Google GenAI plugin, Gemini 3 Flash model                           |
-| `src/data/parser.ts`          | `DataParser` — parses game JSON into `GameEntity[]` (items, buildings, recipes)      |
-| `src/data/embeddings.ts`      | `EmbeddingEngine` — batch embedding generation + cosine similarity search            |
-| `prompts/adagent.prompt`      | Main dotprompt template; input schema: `{ question: string }`                        |
-| `prompts/_personality.prompt` | ADA personality system prompt (sarcastic, Satisfactory-focused)                      |
-| `scripts/buildIndex.ts`       | Offline script: parse game data → generate embeddings → write `game_data_index.json` |
-| `scripts/verifyIndex.ts`      | Validate the generated embeddings index                                              |
-
-## Commands
-
-```bash
-pnpm dev                # Watch mode (tsx)
-pnpm genkit:dev         # Genkit dev UI + watch
-pnpm genkit:emulate     # Genkit dev UI + Firebase emulator (needed for AppCheck)
-pnpm build              # tsc + lint + format check
-pnpm build:index        # Generate/refresh game_data_index.json
-pnpm verify:index       # Validate game_data_index.json
-pnpm deploy             # Deploy this function only
-```
-
-## Data Pipeline Notes
-
-- `Docs-en-US.json` (~9.6MB) is the raw Satisfactory game data source
+- Source data: raw Satisfactory game data export; the active version is pinned in `scripts/paths.ts` (`DOCS_FILENAME`, currently `Docs-en-US-UTF-8-1.2.json`)
 - `DataParser` filters by NativeClass patterns: `FGItemDescriptor`, `FGBuildable`, `FGRecipe`, etc.
-- `EmbeddingEngine` uses `googleai/gemini-embedding-001`; batch size=1, 1s delay between items
-- Pre-generated index is at `game_data_index.json` — re-run `pnpm build:index` after game data updates
-
-## Issue #5 — RAG (Design Phase Only)
-
-`EmbeddingEngine` and `DataParser` are built and the index is generated. The next step (NOT yet implemented) is:
-
-- Load `game_data_index.json` at cold start
-- Embed the user query with `embedQuery()`
-- Call `search()` to retrieve top-K relevant game entities
-- Inject retrieved context into the `adagent.prompt` before generation
+- `EmbeddingEngine` uses `googleai/gemini-embedding-001`; batch size 20, 200ms delay between batches
+- `SearchService` is a singleton — lazy-loads `game_data_index.json` on first tool invocation, not at cold start
+- Tools are registered via side-effect import (`import "./tools/gameDataTools.js"`) and referenced by name in `prompts/adagent.prompt`

@@ -1,4 +1,6 @@
 pnpm-lock.yaml
 Docs-en-US.json
-Docs-en-US-UTF-8.json
+Docs-en-US-UTF-8-1.1.json
+Docs-en-US-UTF-8-1.2.json
 game_data_index.json
+coverage/

@@ -11,6 +11,9 @@ export interface ItemMetadata {
   stackSize: string;
   energyValueMJ: number;
   form: string;
+  earliestTechTier?: number;
+  producedByRecipes?: string[];
+  usedInRecipes?: string[];
 }
 
 export interface RecipeMetadata {
@@ -19,6 +22,7 @@ export interface RecipeMetadata {
   producedIn: string[];
   durationSecs: number;
   isAlternate: boolean;
+  unlockedBy?: SchematicRef[];
 }
 
 export interface ManufacturerMetadata {
@@ -50,11 +54,53 @@ export interface SchematicCost {
   amount: number;
 }
 
+export type SchematicType = "EST_Milestone" | "EST_MAM" | "EST_Alternate";
+
+const SCHEMATIC_TYPES = new Set<string>([
+  "EST_Milestone",
+  "EST_MAM",
+  "EST_Alternate",
+]);
+
+export function isSchematicType(type: string): type is SchematicType {
+  return SCHEMATIC_TYPES.has(type);
+}
+
+export function schematicTypeLabel(type: SchematicType): string {
+  switch (type) {
+    case "EST_Milestone":
+      return "Milestone";
+    case "EST_Alternate":
+      return "Alternate Recipe Unlock";
+    case "EST_MAM":
+      return "MAM Research";
+  }
+}
+
+export function schematicTypeLabelShort(type: SchematicType): string {
+  switch (type) {
+    case "EST_Milestone":
+      return "Milestone";
+    case "EST_Alternate":
+      return "Alternate";
+    case "EST_MAM":
+      return "MAM";
+  }
+}
+
+export interface SchematicRef {
+  displayName: string;
+  type: SchematicType;
+  techTier: number;
+}
+
 export interface SchematicMetadata {
-  type: string;
+  type: SchematicType;
   techTier: number;
   cost: SchematicCost[];
   unlocks: string[];
+  unlockClassNames: string[];
+  prerequisites?: string[];
 }
 
 export interface VehicleMetadata {

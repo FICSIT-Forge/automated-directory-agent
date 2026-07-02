@@ -1,6 +1,6 @@
 # ADAgent — Automated Directory Agent
 
-AI-powered chatbot for Satisfactory game players, embodying ADA's (Automated Directory & Assistant) sarcastic yet helpful personality.
+AI-powered chatbot for Satisfactory game players, embodying ADA's personality.
 
 ## Project Structure
 
@@ -15,11 +15,9 @@ automated-directory-agent/
 ## Tech Stack
 
 **Backend (`functions/`):**
-- Genkit 1.27.0 with `@genkit-ai/google-genai` plugin
-- Model: `gemini-3-flash-preview` (via `googleAI.model()`)
-- Embedding model: `googleai/gemini-embedding-001`
+- Genkit 1.30+ with `@genkit-ai/google-genai` plugin
+- Model: `gemini-3-flash-preview` — Embedding: `googleai/gemini-embedding-001`
 - Firebase Cloud Functions 7 (`onCallGenkit` for streaming)
-- Firebase Admin SDK 13
 - Node.js 22, TypeScript 5.9, ESM, pnpm
 
 **Frontend (`web/`):**
@@ -33,8 +31,9 @@ automated-directory-agent/
 - Firebase Hosting → `web/.output/public` (Nuxt SSG)
 - AppCheck enforced on the `adagent` callable function
 - GEMINI_API_KEY stored in Cloud Secret Manager
+- Cloud Function memory: `1GiB` (required for ~73MB game data index)
 
-## Key Commands
+## Commands
 
 ### Functions (from `functions/`)
 ```bash
@@ -42,8 +41,11 @@ pnpm dev                  # Watch mode (tsx)
 pnpm genkit:dev           # Genkit dev UI + watch
 pnpm genkit:emulate       # Genkit dev UI + Firebase emulator
 pnpm build                # tsc + lint + format check
+pnpm test                 # Vitest unit tests (parser, enricher, eval metrics)
 pnpm build:index          # Generate game data embeddings → game_data_index.json
 pnpm verify:index         # Validate generated embeddings index
+pnpm verify:alternates    # Check EST_Alternate / hard-drive tagging invariants
+pnpm eval                 # Layer-2 retrieval eval (Hit@K/MRR gate vs baseline)
 pnpm deploy               # Deploy functions only
 ```
 
@@ -59,43 +61,30 @@ pnpm deploy               # Deploy to Firebase Hosting (site: adagent)
 1. Use `pnpm genkit:emulate` for local development (required for AppCheck bypass)
 2. Prompt files live in `functions/prompts/` — edit `.prompt` files (Genkit dotprompt format)
 3. The main flow is `adagentFlow` in `functions/src/index.ts`
-4. AppCheck is enforced — for direct API testing, use the Firebase emulator
-
-## Deployment
-
-Firebase predeploy steps (auto-run on `firebase deploy`):
-1. `pnpm format` — Prettier
-2. `pnpm lint` — ESLint
-3. `pnpm build` — TypeScript compile
-
-Always run `pnpm build` and tests before committing.
+4. Always run `pnpm build` before committing
+5. Firebase predeploy runs format → lint → build automatically
 
 ## Data Pipeline (Game Data / RAG)
 
-Game data from Satisfactory is used to reduce hallucinations (see Issue #5):
-1. Source: `functions/Docs-en-US.json` (raw game data, ~9.6MB)
-2. Parse: `DataParser` in `functions/src/data/parser.ts` → `GameEntity[]` (items, buildings, recipes)
-3. Embed: `EmbeddingEngine` in `functions/src/data/embeddings.ts` → cosine similarity search
-4. Index: `functions/game_data_index.json` (pre-computed embeddings)
-5. Script: `pnpm build:index` to regenerate; `pnpm verify:index` to validate
+1. Source: versioned raw game data export — filename pinned in `functions/scripts/paths.ts` (`DOCS_FILENAME`, currently `Docs-en-US-UTF-8-1.2.json`)
+2. Parse: `DataParser` in `functions/src/data/parser.ts` → `GameEntity[]`
+3. Enrich: `enrichEntities` in `functions/src/data/enricher.ts` — cross-entity relationships (items ↔ recipes ↔ schematics ↔ buildings) appended to embedding text + metadata
+4. Embed: `EmbeddingEngine` in `functions/src/data/embeddings.ts` (batch size 20, 200ms delay)
+5. Index: `functions/game_data_index.json` (pre-computed embeddings, ~73MB)
+6. Serve: `SearchService` lazy-loads index on first tool call; three tools (`searchGameData`, `searchRecipes`, `searchSchematics`) registered in `adagent.prompt`
+7. Regenerate: `pnpm build:index`, then `pnpm verify:index` and `pnpm eval` (retrieval-quality gate against `eval/gold-set.json` + `eval/baseline-metrics.json`)
 
-**Status:** Index is generated but RAG is NOT yet wired into `adagentFlow` (Issue #5 in design phase).
+**New game version:** update `DOCS_FILENAME` in `functions/scripts/paths.ts`, then rebuild + verify + eval as above.
 
-## Active Feature Branch
+## Active Work
 
 **Branch:** `5-reduce-ai-agent-hallucinations-with-game-data`
-**Issue #5:** Implement RAG using game data to reduce hallucinations — currently in **exploration/design phase only**. Do not implement until explicitly instructed.
+- **Issue #5:** Game data RAG — agentic tools deployed; cross-entity enrichment + retrieval eval gate (`pnpm eval`) implemented. Remaining: grow the gold set with real player queries (`pnpm mine:reddit`), then Layer-3 (end-to-end answer quality) eval.
+- **Issue #6:** Wiki RAG — add experiential knowledge from satisfactory.wiki.gg for strategy/progression advice. Planned as a parallel index + `searchWikiGuides` tool; the eval framework (`src/eval/metrics.ts`, gold-set schema) is source-agnostic and reusable for it.
 
-## Key Source Files
+## Gotchas
 
-| File | Purpose |
-|------|---------|
-| `functions/src/index.ts` | Main Genkit flow (`adagentFlow`) + Firebase callable export |
-| `functions/src/genkit.ts` | Genkit + Google GenAI plugin initialization |
-| `functions/src/data/parser.ts` | Parses game JSON → `GameEntity[]` |
-| `functions/src/data/embeddings.ts` | `EmbeddingEngine`: generate embeddings + cosine similarity search |
-| `functions/prompts/adagent.prompt` | Main prompt template (Genkit dotprompt) |
-| `functions/prompts/_personality.prompt` | ADA personality system prompt |
-| `functions/scripts/buildIndex.ts` | Offline script to build embeddings index |
-| `web/app/utils/firebase-chat-transport.ts` | Custom `ChatTransport` wrapping Firebase callable |
-| `web/app/pages/chat/[id].vue` | Chat page with streaming message display |
+- **Do NOT add `inputSchema`/`outputSchema` to `adagentFlow`** — `onCallGenkit` passes `req.data` (object from client) directly to the Genkit action. Schema validation runs before the flow function, and the client sends `{ question: "..." }` not a plain string.
+- **Genkit errors crash `util.inspect`** — Firebase's logger can't format complex Genkit/Google AI error objects. Sanitize to plain strings before logging in catch blocks.
+- **Game data index requires 1GiB memory** — `game_data_index.json` (~73MB) is parsed via `JSON.parse` at runtime. Default 256MB Cloud Functions memory causes OOM.
+- **Side-effect imports are required** — `import "./tools/gameDataTools.js"` in `index.ts` registers tools with Genkit. Without it, `adagent.prompt` fails with "Unable to resolve tool".

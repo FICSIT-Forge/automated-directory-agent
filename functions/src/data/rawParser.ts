@@ -15,8 +15,11 @@
  * Also handles short forms like "Desc_IronIngot_C" directly.
  */
 export function extractClassName(path: string): string {
-  // Match the last segment ending in _C before a quote or end of string
-  const match = /(\w+_C)['"]?/.exec(path);
+  // Match a segment ending in _C only at a quote or end of string, so stems
+  // that merely contain "_C" (e.g. "Desc_CompactedCoal" inside a full asset
+  // path) can't match prematurely. Hyphens are legal in classNames
+  // (e.g. milestone "Schematic_5-2_C").
+  const match = /([\w-]+_C)(?=['"]|$)/.exec(path);
   return match ? match[1] : path;
 }
 
@@ -34,7 +37,7 @@ export function parseItemAmountList(
   if (!raw || raw === "" || raw === "()" || raw === "None") return [];
 
   const results: Array<{ className: string; amount: number }> = [];
-  const regex = /ItemClass="[^"]*?(\w+_C)'?"?\s*,\s*Amount=(\d+)/g;
+  const regex = /ItemClass="[^"]*?([\w-]+_C)'?"?\s*,\s*Amount=(\d+)/g;
   let match;
 
   while ((match = regex.exec(raw)) !== null) {
@@ -57,7 +60,7 @@ export function parseClassList(raw: string): string[] {
   if (!raw || raw === "" || raw === "()" || raw === "None") return [];
 
   const results: string[] = [];
-  const regex = /(\w+_C)['"\s]*[,)]/g;
+  const regex = /([\w-]+_C)['"\s]*[,)]/g;
   let match;
 
   while ((match = regex.exec(raw)) !== null) {
@@ -68,18 +71,40 @@ export function parseClassList(raw: string): string[] {
 }
 
 /**
- * Parses a schematic unlock array to extract recipe display names.
+ * Extracts classNames from an array of Unreal Engine objects by reading
+ * a named class-list field from each object.
  *
- * Schematics have an mUnlocks field that is a complex nested structure.
- * We extract recipe class names from it.
+ * Common structure: [{ Class: "...", mFieldName: "(ClassName_C,...)" }]
+ */
+function extractClassNamesFromField(
+  objects: readonly unknown[],
+  fieldName: string,
+): string[] {
+  if (!objects?.length) return [];
+  return objects.flatMap((obj) => {
+    const raw = (obj as Record<string, unknown>)[fieldName] as
+      | string
+      | undefined;
+    return raw ? parseClassList(raw) : [];
+  });
+}
+
+/**
+ * Parses a schematic unlock array to extract recipe classNames.
  *
- * Input (array of objects): [{ Class: "...", mRecipes: "(...Recipe_IronPlate_C...,...)" }]
+ * Input:  [{ Class: "...", mRecipes: "(...Recipe_IronPlate_C...)" }]
  * Output: ["Recipe_IronPlate_C", ...]
  */
-export function parseSchematicUnlocks(unlocks: unknown[]): string[] {
-  return unlocks.flatMap((unlock) => {
-    const u = unlock as Record<string, unknown>;
-    const recipesStr = u.mRecipes as string | undefined;
-    return recipesStr ? parseClassList(recipesStr) : [];
-  });
+export function parseSchematicUnlocks(unlocks: readonly unknown[]): string[] {
+  return extractClassNamesFromField(unlocks, "mRecipes");
+}
+
+/**
+ * Parses mSchematicDependencies to extract prerequisite schematic classNames.
+ *
+ * Input:  [{ Class: "...", mSchematics: "(...Schematic_1_C...)" }]
+ * Output: ["Schematic_1_C", ...]
+ */
+export function parseSchematicDependencies(deps: readonly unknown[]): string[] {
+  return extractClassNamesFromField(deps, "mSchematics");
 }
