@@ -64,6 +64,30 @@ pnpm deploy               # Deploy to Firebase Hosting (site: adagent)
 4. Always run `pnpm build` before committing
 5. Firebase predeploy runs format → lint → build automatically
 
+## Upgrade Philosophy: Adoption-First
+
+This project is deliberately a **learning vehicle**: chasing latest-and-greatest across
+the stack (Genkit, Nuxt, Firebase, Gemini models, Node) is a project goal, not a risk.
+Bias toward early adoption — treat new majors, previews, and betas as opportunities to
+try, not churn to defer. The safety net is the test suite + retrieval eval gate + CI
+(issue #8), not version conservatism. Breaking changes are accepted, planned effort.
+
+## Resuming After Downtime (re-entry ritual)
+
+Work here is sporadic — weeks can pass between sessions. When resuming:
+
+1. `git fetch && git status` — check for unmerged Renovate PRs and open branches
+2. Skim open issues labeled/titled as stack-watch digests (filed by the scheduled
+   stack-watch agent: model deprecations, runtime EOLs, notable new features)
+3. `pnpm outdated` in `functions/` and `web/` — anything Renovate hasn't automerged
+   (majors) is a candidate to adopt now, per the philosophy above
+4. Check whether a new Satisfactory data export exists; if so: bump `DOCS_FILENAME`
+   in `functions/scripts/paths.ts` → `pnpm build:index` → `pnpm verify:index` →
+   `pnpm eval`
+5. **If `gemini-embedding-001` is ever deprecated/replaced:** switching embedding
+   models requires a full index rebuild AND re-baselining the eval
+   (`pnpm eval --update-baseline`) — treat it as a mini-project, not a version bump
+
 ## Data Pipeline (Game Data / RAG)
 
 1. Source: versioned raw game data export — filename pinned in `functions/scripts/paths.ts` (`DOCS_FILENAME`, currently `Docs-en-US-UTF-8-1.2.json`)
