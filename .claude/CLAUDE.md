@@ -76,11 +76,36 @@ pnpm deploy               # Deploy to Firebase Hosting (site: adagent)
 
 **New game version:** update `DOCS_FILENAME` in `functions/scripts/paths.ts`, then rebuild + verify + eval as above.
 
-## Active Work
+## Active Work & Roadmap
 
-**Branch:** `5-reduce-ai-agent-hallucinations-with-game-data`
-- **Issue #5:** Game data RAG — agentic tools deployed; cross-entity enrichment + retrieval eval gate (`pnpm eval`) implemented. Remaining: grow the gold set with real player queries (`pnpm mine:reddit`), then Layer-3 (end-to-end answer quality) eval.
-- **Issue #6:** Wiki RAG — add experiential knowledge from satisfactory.wiki.gg for strategy/progression advice. Planned as a parallel index + `searchWikiGuides` tool; the eval framework (`src/eval/metrics.ts`, gold-set schema) is source-agnostic and reusable for it.
+**Decided sequence (2026-07-02): instrument → publish → build #6 from real traffic.**
+Rationale: real player traffic is both the requirements document for Issue #6 (which
+wiki content/aliases matter) and the observed-miss generator the saturated eval gold
+set needs. Do NOT build #6 first in isolation.
+
+1. **#7 Instrumentation** (pre-publish prerequisite): Genkit telemetry, per-turn
+   structured logs (question → tool calls → top-K + scores → answer), thumbs up/down
+   in web UI, strategy-question guardrail in `adagent.prompt`, rate limiting
+2. **Soft-launch** to a small player circle (beta framing) once #7 lands
+3. **#6 Wiki RAG** built during the traffic-collection window, informed by it — parallel
+   index + `searchWikiGuides` tool; the eval framework (`src/eval/metrics.ts`,
+   gold-set schema) is source-agnostic and reusable; traffic-derived cases (e.g.
+   gold-set `syn-03` "HOR") become its acceptance tests
+4. **In parallel:** #8 CI/CD (PR checks + deploys from main), #9 move the ~74MB
+   `game_data_index.json` out of git (history bloat per rebuild), #10 Layer-3
+   LLM-judge answer-accuracy eval (where #6 acceptance tests and #7 thumbs-down
+   triage converge)
+
+**Issue #5** (this branch): DONE pending PR — agentic tools + cross-entity enrichment +
+retrieval eval gate (`pnpm eval`, baseline n=34, Hit@5 1.0). Gold set grows via real
+player queries (4 TODO slots open; `pnpm mine:reddit` or paste-and-label).
+
+**Community-vocabulary gap (feeds #6):** queries only hit when full sentence context
+compensates for terms absent from game data ("HOR", "water pump", "drill"). Wiki
+aliases are the intended fix; see gold-set notes on syn-03/syn-04.
+
+**Discord:** scraping violates ToS — the plan is ADA as a legitimate Discord bot
+(second client of the same callable) once #7 + soft-launch prove the loop.
 
 ## Gotchas
 
