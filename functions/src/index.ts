@@ -1,4 +1,7 @@
-import { ai } from "./genkit";
+import { ai } from "./genkit.js";
+
+// Register game data tools with Genkit runtime (side-effect imports)
+import "./tools/gameDataTools.js";
 
 // Cloud Functions for Firebase supports Genkit natively. The onCallGenkit function creates a callable
 // function from a Genkit action. It automatically implements streaming if your flow does.
@@ -48,6 +51,7 @@ const adagentFlow = ai.defineFlow(
 
 export const adagent = onCallGenkit(
   {
+    memory: "1GiB",
     // Force redeploy
     // Uncomment to enable AppCheck. This can reduce costs by ensuring only your Verified
     // app users can use your API. Read more at https://firebase.google.com/docs/app-check/cloud-functions

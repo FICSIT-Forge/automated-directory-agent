@@ -12,14 +12,15 @@
     "genkit:emulate": "genkit start -- firebase emulators:start --inspect-functions",
     "build:index": "tsx scripts/buildIndex.ts",
     "verify:index": "tsx scripts/verifyIndex.ts",
-    "shell": "pnpm run build && firebase functions:shell",
-    "start": "pnpm run shell",
+    "shell": "pnpm build && firebase functions:shell",
+    "start": "pnpm shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },
   "engines": {
     "node": "22"
   },
+  "type": "module",
   "main": "lib/index.js",
   "dependencies": {
     "@genkit-ai/firebase": "^1.30.1",

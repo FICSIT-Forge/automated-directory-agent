@@ -1,10 +1,13 @@
 import * as path from "path";
 import * as fs from "fs";
 import { EmbeddingEngine } from "../src/data/embeddings";
-import { GameEntity } from "../src/data/parser";
+import type { IndexedEntity } from "../src/data/types";
 
 async function main() {
-  const indexPath = path.resolve(__dirname, "../game_data_index.json");
+  const indexPath = path.resolve(
+    import.meta.dirname,
+    "../game_data_index.json",
+  );
   if (!fs.existsSync(indexPath)) {
     console.error("Index file not found.");
     process.exit(1);
@@ -13,13 +16,10 @@ async function main() {
   console.log("Loading index...");
   const entities = JSON.parse(
     fs.readFileSync(indexPath, "utf-8"),
-  ) as GameEntity[];
+  ) as IndexedEntity[];
   console.log(`Loaded ${entities.length} entities.`);
 
-  // Check if embeddings exist
-  const withEmbedding = entities.filter(
-    (e: any) => e.embedding && e.embedding.length > 0,
-  );
+  const withEmbedding = entities.filter((e) => e.embedding.length > 0);
   console.log(
     `Entities with embedding: ${withEmbedding.length}/${entities.length}`,
   );
@@ -29,7 +29,7 @@ async function main() {
     process.exit(1);
   }
 
-  const engine = new EmbeddingEngine(entities);
+  const engine = EmbeddingEngine.fromIndex(entities);
   console.log(
     "Engine prototype:",
     Object.getOwnPropertyNames(Object.getPrototypeOf(engine)),
@@ -46,10 +46,6 @@ async function main() {
     console.log(`\nQuery: "${t.query}"`);
     try {
       const embedding = await engine.embedQuery(t.query);
-      if (!embedding) {
-        console.error("Failed to generate query embedding (undefined).");
-        continue;
-      }
       console.log(`Generated query embedding length: ${embedding.length}`);
 
       const results = engine.search(embedding, 3);
