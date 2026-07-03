@@ -83,8 +83,7 @@ function extractClassNamesFromField(
   if (!objects?.length) return [];
   return objects.flatMap((obj) => {
     const raw = (obj as Record<string, unknown>)[fieldName] as
-      | string
-      | undefined;
+      string | undefined;
     return raw ? parseClassList(raw) : [];
   });
 }
