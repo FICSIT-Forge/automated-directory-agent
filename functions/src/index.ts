@@ -16,8 +16,11 @@ import { defineSecret } from "firebase-functions/params";
 const apiKey = defineSecret("GEMINI_API_KEY");
 
 // The Firebase telemetry plugin exports a combination of metrics, traces, and logs to Google Cloud
-// Observability. See https://firebase.google.com/docs/genkit/observability/telemetry-collection.
+// Observability. Traces include full tool inputs/outputs — the detailed half of the
+// per-turn record; the structured "adagent_turn" log below is the cheap queryable half.
+// See https://firebase.google.com/docs/genkit/observability/telemetry-collection.
 import { enableFirebaseTelemetry } from "@genkit-ai/firebase";
+import * as logger from "firebase-functions/logger";
 enableFirebaseTelemetry();
 
 const adagentFlow = ai.defineFlow(
@@ -25,6 +28,7 @@ const adagentFlow = ai.defineFlow(
     name: "adagentFlow",
   },
   async (input, { sendChunk }) => {
+    const startMs = Date.now();
     try {
       // Construct prompt using prompts/adagent.prompt.
       const adagentPrompt = ai.prompt("adagent");
@@ -33,17 +37,38 @@ const adagentFlow = ai.defineFlow(
       const { response, stream } = adagentPrompt.stream({ question: input });
 
       for await (const chunk of stream) {
-        console.log("Chunk received:", JSON.stringify(chunk));
         sendChunk(chunk.text);
       }
 
-      // Handle the response from the model API. In this sample, we just
-      // convert it to a string, but more complicated flows might coerce the
-      // response into structured output or chain the response into another
-      // LLM call, etc.
-      return (await response).text;
+      const result = await response;
+
+      // One structured record per turn: question → tool calls → answer shape.
+      // This is the raw material for gold-set / accuracy-dataset triage
+      // (issue #7). No user identifiers.
+      const toolCalls = result.messages
+        .flatMap((m) => m.content)
+        .filter((part) => part.toolRequest)
+        .map((part) => ({
+          tool: part.toolRequest?.name,
+          input: part.toolRequest?.input,
+        }));
+      logger.info("adagent_turn", {
+        question: input,
+        toolCalls,
+        answerChars: result.text.length,
+        latencyMs: Date.now() - startMs,
+      });
+
+      return result.text;
     } catch (e) {
-      console.error("ADAGENT FLOW ERROR:", e);
+      // Genkit/Google AI error objects can crash util.inspect in Firebase's
+      // logger — log plain strings only.
+      logger.error("adagent_turn_error", {
+        question: input,
+        latencyMs: Date.now() - startMs,
+        message: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+      });
       throw e;
     }
   },
