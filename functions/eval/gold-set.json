@@ -1,0 +1,404 @@
+{
+  "version": 1,
+  "k": 5,
+  "thresholds": {
+    "hitAt5Floor": 0.7,
+    "mrrFloor": 0.6,
+    "regressionTolerance": 0.03
+  },
+  "_readme": [
+    "Retrieval-quality gold set for the game-data RAG index.",
+    "Each case maps a player query to a SET of acceptable answers, keyed by className",
+    "(stable across enrichment/display-name changes). A query passes Hit@K if ANY",
+    "relevant className appears in the top-K results under the given type filter.",
+    "",
+    "Fields:",
+    "  query    - the search text, phrased the way a player would type it",
+    "  category - factual | relational | synonym | progression",
+    "  types    - entity-type filter mirroring the tool that would serve this query",
+    "             (omit/empty = unfiltered, like searchGameData)",
+    "  relevant - className(s); ANY one in top-K = hit. Multiple = 'any of these is fine'",
+    "  source   - authored | reddit-skim | observed-miss",
+    "  notes    - labeling rationale / caveats",
+    "",
+    "Authored cases below are written BLIND (from game knowledge, not the index text);",
+    "answer keys were resolved against the real index. The reddit-skim and observed-miss",
+    "slots are intentionally left for Daisy to fill with real player phrasing and real",
+    "retrieval failures (the highest-value cases)."
+  ],
+  "categories": {
+    "factual": "Direct lookup of a specific entity's facts (a recipe, a building's stats, an item).",
+    "relational": "Cross-entity intent: what produces/consumes/unlocks X. Stresses the enrichment.",
+    "synonym": "Vague or non-canonical phrasing; tests semantic robustness to player vocabulary.",
+    "progression": "Tier / unlock / 'what next' questions. Should route to schematics."
+  },
+  "queries": [
+    {
+      "id": "fact-01",
+      "query": "iron plate recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_IronPlate_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-02",
+      "query": "reinforced iron plate ingredients",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_IronPlateReinforced_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-03",
+      "query": "rotor recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_Rotor_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-04",
+      "query": "modular frame recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_ModularFrame_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-05",
+      "query": "how to make wire",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_Wire_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-06",
+      "query": "concrete recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_Concrete_C"],
+      "source": "authored",
+      "notes": "Concrete item className is Desc_Cement_C; the recipe is Recipe_Concrete_C. Alternate concrete recipes also acceptable if we choose to broaden later."
+    },
+    {
+      "id": "fact-07",
+      "query": "how much power does a constructor use",
+      "category": "factual",
+      "types": ["manufacturer"],
+      "relevant": ["Build_ConstructorMk1_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-08",
+      "query": "what does the smelter do",
+      "category": "factual",
+      "types": ["manufacturer"],
+      "relevant": ["Build_SmelterMk1_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-09",
+      "query": "assembler power consumption",
+      "category": "factual",
+      "types": ["manufacturer"],
+      "relevant": ["Build_AssemblerMk1_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-10",
+      "query": "how much energy is in coal",
+      "category": "factual",
+      "types": ["item"],
+      "relevant": ["Desc_Coal_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-11",
+      "query": "iron ingot",
+      "category": "factual",
+      "types": ["item"],
+      "relevant": ["Desc_IronIngot_C"],
+      "source": "authored",
+      "notes": ""
+    },
+    {
+      "id": "fact-12",
+      "query": "caterium ingot",
+      "category": "factual",
+      "types": ["item"],
+      "relevant": ["Desc_GoldIngot_C"],
+      "source": "authored",
+      "notes": "Gotcha: Caterium Ingot's className is Desc_GoldIngot_C (legacy 'gold' naming). Good test that we resolve by display name, not className guesswork."
+    },
+    {
+      "id": "fact-13",
+      "query": "heavy modular frame recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_ModularFrameHeavy_C"],
+      "source": "authored",
+      "notes": "Late-game. Many 'frame' variants compete in embedding space (Modular, Heavy, Fused, Flexible) - tests precision among near-duplicates."
+    },
+    {
+      "id": "fact-14",
+      "query": "computer recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_Computer_C"],
+      "source": "authored",
+      "notes": "Late-game. Must beat Supercomputer / alternate computer recipes for the base Computer."
+    },
+    {
+      "id": "fact-15",
+      "query": "turbo motor recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_MotorTurbo_C"],
+      "source": "authored",
+      "notes": "Late-game GOTCHA: Turbo Motor's item className is Desc_MotorLightweight_C (display name and className diverge completely). Retrieval must work off display/semantic content, not the className token."
+    },
+    {
+      "id": "fact-16",
+      "query": "radio control unit recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_RadioControlUnit_C"],
+      "source": "authored",
+      "notes": "Late-game GOTCHA: Radio Control Unit's item className is Desc_ModularFrameLightweight_C - a 'frame' className for a non-frame item. Strong test that enrichment text (not className) drives the match."
+    },
+    {
+      "id": "fact-17",
+      "query": "thermal propulsion rocket recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_SpaceElevatorPart_8_C"],
+      "source": "authored",
+      "notes": "Late-game GOTCHA: a space elevator part stored as Recipe_SpaceElevatorPart_8_C - className gives no hint of the display name. Tier 9 complexity."
+    },
+    {
+      "id": "fact-18",
+      "query": "supercomputer",
+      "category": "factual",
+      "types": ["item"],
+      "relevant": ["Desc_ComputerSuper_C"],
+      "source": "authored",
+      "notes": "Late-game item lookup; must disambiguate from the base Computer (Desc_Computer_C)."
+    },
+    {
+      "id": "fact-19",
+      "query": "turbofuel recipe",
+      "category": "factual",
+      "types": ["recipe"],
+      "relevant": ["Recipe_Alternate_Turbofuel_C"],
+      "source": "authored",
+      "notes": "GOTCHA: the base 'Turbofuel' recipe is classed Recipe_Alternate_Turbofuel_C (the className says 'Alternate', the display name is just 'Turbofuel'). Must not be out-ranked by Packaged/Unpackage Turbofuel or the various Turbo-* alternates. Retrieval must work off display/semantic content, not the className token."
+    },
+    {
+      "id": "rel-01",
+      "query": "fuel for jetpack",
+      "category": "relational",
+      "types": ["item"],
+      "relevant": [
+        "Desc_Fuel_C",
+        "Desc_PackagedBiofuel_C",
+        "Desc_PackagedRocketFuel_C",
+        "Desc_PackagedIonizedFuel_C"
+      ],
+      "source": "observed-miss",
+      "notes": "The query that started this whole effort. Jetpack runs on PACKAGED fuels (Packaged Fuel, Packaged Liquid Biofuel, Packaged Turbofuel, Packaged Rocket Fuel, Ionized Fuel) - NOT solid biofuel (old verifier mislabeled this). Currently retrieves the Jetpack item itself; this case stays until that's fixed."
+    },
+    {
+      "id": "rel-02",
+      "query": "what ore do I need for steel",
+      "category": "relational",
+      "types": ["item"],
+      "relevant": ["Desc_OreIron_C", "Desc_Coal_C"],
+      "source": "authored",
+      "notes": "Steel Ingot = Iron Ore + Coal. Either ore in top-K is a hit."
+    },
+    {
+      "id": "rel-03",
+      "query": "what do I need to build a rotor",
+      "category": "relational",
+      "types": ["recipe"],
+      "relevant": ["Recipe_Rotor_C"],
+      "source": "authored",
+      "notes": "Rotor recipe ingredients are iron rod + screws; the recipe entity carries the ingredient list."
+    },
+    {
+      "id": "rel-04",
+      "query": "alternate recipe for screws",
+      "category": "relational",
+      "types": ["recipe", "schematic"],
+      "relevant": [
+        "Recipe_Alternate_Screw_C",
+        "Recipe_Alternate_Screw_2_C",
+        "Schematic_Alternate_Screw_C",
+        "Schematic_Alternate_Screw2_C"
+      ],
+      "source": "authored",
+      "notes": "Alternates (Cast Screws, Steel Screws) are unlocked via hard-drive scans researched at the MAM - NOT milestones. Enrichment should describe these as hard-drive/MAM unlocks."
+    },
+    {
+      "id": "rel-05",
+      "query": "diluted fuel recipe",
+      "category": "relational",
+      "types": ["recipe"],
+      "relevant": [
+        "Recipe_Alternate_DilutedFuel_C",
+        "Recipe_Alternate_DilutedPackagedFuel_C"
+      ],
+      "source": "reddit-skim",
+      "notes": "Real player vocabulary from a Turbofuel-strategy thread. Note: the base Turbofuel recipe is classed Recipe_Alternate_Turbofuel_C but displays as just 'Turbofuel'."
+    },
+    {
+      "id": "rel-06",
+      "query": "heavy encased frame alternate recipe",
+      "category": "relational",
+      "types": ["recipe", "schematic"],
+      "relevant": [
+        "Recipe_Alternate_ModularFrameHeavy_C",
+        "Schematic_Alternate_HeavyModularFrame_C"
+      ],
+      "source": "reddit-skim",
+      "notes": "Real player vocabulary ('Heavy Encased Frame' is the display name of the alt HMF recipe). Complements prog-01: this is one of the alternates that out-ranks the true HMF milestone, so a direct-name query SHOULD hit it."
+    },
+    {
+      "id": "rel-slot-03",
+      "query": "TODO: observed-miss - any relational query you catch ADA fumbling in dogfooding",
+      "category": "relational",
+      "types": [],
+      "relevant": [],
+      "source": "observed-miss",
+      "notes": "FILL ME with proven-hard cases."
+    },
+    {
+      "id": "syn-01",
+      "query": "spinny drill thing",
+      "category": "synonym",
+      "types": ["extractor"],
+      "relevant": ["Build_MinerMk1_C", "Build_MinerMk2_C", "Build_MinerMk3_C"],
+      "source": "authored",
+      "notes": "Vague description of a Miner. Any miner tier is a hit."
+    },
+    {
+      "id": "syn-02",
+      "query": "power slug",
+      "category": "synonym",
+      "types": ["item"],
+      "relevant": [
+        "Desc_Crystal_C",
+        "Desc_Crystal_mk2_C",
+        "Desc_Crystal_mk3_C"
+      ],
+      "source": "authored",
+      "notes": "Power slugs are stored as 'Crystal' classNames (Blue/Yellow/Purple). Any is a hit."
+    },
+    {
+      "id": "syn-03",
+      "query": "HOR as primary or byproduct?",
+      "category": "synonym",
+      "types": ["item", "recipe"],
+      "relevant": [
+        "Desc_HeavyOilResidue_C",
+        "Recipe_Alternate_HeavyOilResidue_C",
+        "Recipe_Plastic_C",
+        "Recipe_Rubber_C"
+      ],
+      "source": "reddit-skim",
+      "notes": "Verbatim Reddit title. 'HOR' = Heavy Oil Residue (community abbreviation, appears nowhere in game data). Primary = Alternate: Heavy Oil Residue recipe; byproduct = Plastic/Rubber recipes. Verbatim phrasing hits rank 1 but TIGHTLY (0.616 vs 0.600 for Iron Ore noise); the bare abbreviation ('what do I do with HOR') misses top-10 entirely - alias enrichment (Issue #6 wiki) is the fix for that. Guard case for abbreviation robustness."
+    },
+    {
+      "id": "syn-slot-02",
+      "query": "TODO: reddit-skim - 'red ore' or similar ambiguous color/shape description",
+      "category": "synonym",
+      "types": [],
+      "relevant": [],
+      "source": "reddit-skim",
+      "notes": "FILL ME. 'red ore' is genuinely ambiguous - document the intended target(s) before labeling, or drop it."
+    },
+    {
+      "id": "syn-04",
+      "query": "Could someone help me with the water pumps and coal generators?",
+      "category": "synonym",
+      "types": [],
+      "relevant": ["Build_WaterPump_C", "Recipe_WaterPump_C"],
+      "source": "reddit-skim",
+      "notes": "Verbatim Reddit title. AMBIGUITY: players usually mean Pipeline Pump when they say 'water pump', but this post (extractors stopping/restarting as pipes fill, tripping coal generators) means Water Extractor - whose internal className is, confusingly, Build_WaterPump_C. Pipeline Pump is deliberately NOT in the answer key: retrieving only it would misdiagnose this post. Currently the TIGHTEST hit in the set (Water Extractor recipe at exactly rank 5; Pipeline Pump Mk.1 out-ranks it at 3) - a canary for any embedding/enrichment change. Same post says 'Mk2 drill' for Miner Mk.2 (drill->miner already covered by syn-01)."
+    },
+    {
+      "id": "prog-01",
+      "query": "unlock heavy modular frame",
+      "category": "progression",
+      "types": ["schematic"],
+      "relevant": ["Schematic_5-2_C"],
+      "source": "authored",
+      "notes": "Heavy Modular Frame is unlocked by the milestone 'Industrial Manufacturing' = Schematic_5-2_C, Tier 6 (verified via unlockClassNames; tier agrees with the wiki). DO NOT 'fix' this className to 6-1 based on the number: the Schematic_X-Y number is a LEGACY internal id, NOT the tier (e.g. Schematic_6-1_C is 'Logistics Mk.4' at Tier 5). Always resolve by displayName + unlockClassNames against the index, never by the className number."
+    },
+    {
+      "id": "prog-02",
+      "query": "how do I unlock the assembler",
+      "category": "progression",
+      "types": ["schematic"],
+      "relevant": ["Schematic_2-1_C"],
+      "source": "authored",
+      "notes": "Assembler is unlocked by 'Part Assembly' (Tier 2, Schematic_2-1_C). Verified via unlockClassNames."
+    },
+    {
+      "id": "prog-03",
+      "query": "when can I start making steel",
+      "category": "progression",
+      "types": ["schematic"],
+      "relevant": ["Schematic_3-4_C"],
+      "source": "authored",
+      "notes": "'Basic Steel Production' (Tier 3) unlocks steel."
+    },
+    {
+      "id": "prog-04",
+      "query": "how to unlock coal power",
+      "category": "progression",
+      "types": ["schematic"],
+      "relevant": ["Schematic_3-1_C"],
+      "source": "authored",
+      "notes": "'Coal Power' milestone (Tier 3)."
+    },
+    {
+      "id": "prog-05",
+      "query": "what milestone gives me oil processing",
+      "category": "progression",
+      "types": ["schematic"],
+      "relevant": ["Schematic_5-1_C"],
+      "source": "authored",
+      "notes": "'Oil Processing' milestone (Tier 5)."
+    },
+    {
+      "id": "prog-slot-01",
+      "query": "TODO: reddit-skim - a 'what should I build next at tier N' question",
+      "category": "progression",
+      "types": ["schematic"],
+      "relevant": [],
+      "source": "reddit-skim",
+      "notes": "FILL ME: real progression-advice phrasing. Replaces the old brittle 'tier 3 progression what to build next' case."
+    },
+    {
+      "id": "prog-slot-02",
+      "query": "TODO: reddit-skim - a MAM / hard-drive / research question",
+      "category": "progression",
+      "types": ["schematic"],
+      "relevant": [],
+      "source": "reddit-skim",
+      "notes": "FILL ME"
+    }
+  ]
+}

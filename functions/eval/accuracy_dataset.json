@@ -1,0 +1,42 @@
+[
+  {
+    "testCaseId": "iron_plate_recipe",
+    "input": "How do I make Iron Plates?",
+    "reference": "Iron Plates are produced in a Constructor. The recipe uses 3x Iron Ingot (30/min) to produce 2x Iron Plate (20/min) with a cycle time of 6 seconds."
+  },
+  {
+    "testCaseId": "iron_plates_60_per_min",
+    "input": "How do I produce 60 Iron Plates per minute?",
+    "reference": "The Iron Plate recipe produces 20 Iron Plates per minute per Constructor (2 plates per 6-second cycle). To produce 60 per minute, you need 3 Constructors running the Iron Plate recipe. Each Constructor uses 30 Iron Ingots per minute, so you need 90 Iron Ingots per minute total."
+  },
+  {
+    "testCaseId": "coal_generator_power",
+    "input": "How much power does the Coal Generator produce and what fuel does it use?",
+    "reference": "The Coal-Powered Generator produces 75 MW of power. It can use Coal, Compacted Coal, or Petroleum Coke as fuel, and requires Water as a supplemental resource."
+  },
+  {
+    "testCaseId": "heavy_modular_frame_recipe",
+    "input": "What are the ingredients for Heavy Modular Frames?",
+    "reference": "Heavy Modular Frames are produced in a Manufacturer with a 30-second cycle time. Ingredients: 5x Modular Frame (10/min), 20x Steel Pipe (40/min), 5x Encased Industrial Beam (10/min), 120x Screws (240/min). Output: 1x Heavy Modular Frame (2/min)."
+  },
+  {
+    "testCaseId": "constructor_power",
+    "input": "How much power does a Constructor use?",
+    "reference": "The Constructor consumes 4 MW of power. It crafts 1 part into another part and can be automated with Conveyor Belts."
+  },
+  {
+    "testCaseId": "coal_power_unlock",
+    "input": "When do I unlock coal power?",
+    "reference": "Coal power is unlocked at Tier 3 via the 'Coal Power' milestone. It costs 150x Reinforced Iron Plate, 50x Rotor, and 500x Cable. It unlocks the Coal-Powered Generator, Water Extractor, Pipeline Mk.1, Pipeline Support, Pipeline Junction, Pipeline Pump Mk.1, and Fluid Buffer."
+  },
+  {
+    "testCaseId": "screw_recipes_comparison",
+    "input": "What are the different recipes for Screws?",
+    "reference": "There are 3 Screw recipes: (1) Standard: 1x Iron Rod → 4x Screws in a Constructor, 40/min. (2) Alternate: Cast Screws: 5x Iron Ingot → 20x Screws in a Constructor, 50/min. (3) Alternate: Steel Screws: 1x Steel Beam → 52x Screws in a Constructor, 260/min. Steel Screws has the highest output rate."
+  },
+  {
+    "testCaseId": "base_building_milestone",
+    "input": "What does the Base Building milestone unlock?",
+    "reference": "Base Building is a Tier 1 milestone that costs 200x Concrete, 100x Iron Plate, and 100x Iron Rod. It unlocks the Lookout Tower, Foundation (1m, 2m, 4m), Ramp (1m, 2m, 4m), and Basic Wall (4m, 1m)."
+  }
+]
