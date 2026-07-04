@@ -21,7 +21,8 @@
     "logs": "firebase functions:log",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "mine:logs": "tsx scripts/mineLogs.ts"
   },
   "engines": {
     "node": "22"

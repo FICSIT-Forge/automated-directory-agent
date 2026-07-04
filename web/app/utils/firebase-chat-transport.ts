@@ -12,6 +12,7 @@ export class FirebaseChatTransport implements ChatTransport<UIMessage> {
 
   async sendMessages(options: {
     messages: UIMessage[];
+    chatId?: string;
   }): Promise<ReadableStream<UIMessageChunk>> {
     const instanceId = this.instanceId; // Capture for use in closures
     console.log(
@@ -59,7 +60,11 @@ export class FirebaseChatTransport implements ChatTransport<UIMessage> {
         streamStartTime = Date.now();
         const messageId = "gen-" + Date.now().toString();
         try {
-          const result = await adagent.stream({ question: content });
+          // sessionId feeds the backend's per-session rate limit (issue #7)
+          const result = await adagent.stream({
+            question: content,
+            sessionId: options.chatId,
+          });
 
           console.log(`[Transport-${instanceId}] 📞 Got stream result:`, {
             hasStream: !!result.stream,

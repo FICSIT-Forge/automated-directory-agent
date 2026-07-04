@@ -21,6 +21,9 @@ const apiKey = defineSecret("GEMINI_API_KEY");
 // See https://firebase.google.com/docs/genkit/observability/telemetry-collection.
 import { enableFirebaseTelemetry } from "@genkit-ai/firebase";
 import * as logger from "firebase-functions/logger";
+import { UserFacingError } from "genkit";
+import { parseTurnRequest } from "./request.js";
+import { checkRateLimit } from "./rateLimiter.js";
 enableFirebaseTelemetry();
 
 const adagentFlow = ai.defineFlow(
@@ -29,12 +32,30 @@ const adagentFlow = ai.defineFlow(
   },
   async (input, { sendChunk }) => {
     const startMs = Date.now();
+    // Normalize the client payload FIRST: the raw object must never reach the
+    // prompt (it renders as "[object Object]" and the model never sees the
+    // question). Do not add inputSchema here — see CLAUDE.md gotcha.
+    const { question, sessionId } = parseTurnRequest(input);
     try {
+      const rate = await checkRateLimit(sessionId);
+      if (!rate.allowed) {
+        logger.warn("adagent_rate_limited", {
+          blockedBy: rate.blockedBy,
+          retryAfterSecs: rate.retryAfterSecs,
+          sessionId,
+        });
+        throw new UserFacingError(
+          "RESOURCE_EXHAUSTED",
+          "FICSIT compliance notice: this terminal has exceeded its allotted " +
+            "inquiry quota. Productivity is appreciated — please resume " +
+            `in ${Math.ceil((rate.retryAfterSecs ?? 3600) / 60)} minutes.`,
+        );
+      }
+
       // Construct prompt using prompts/adagent.prompt.
       const adagentPrompt = ai.prompt("adagent");
 
-      // The prompt expects { question: string } based on the schema
-      const { response, stream } = adagentPrompt.stream({ question: input });
+      const { response, stream } = adagentPrompt.stream({ question });
 
       for await (const chunk of stream) {
         sendChunk(chunk.text);
@@ -53,7 +74,8 @@ const adagentFlow = ai.defineFlow(
           input: part.toolRequest?.input,
         }));
       logger.info("adagent_turn", {
-        question: input,
+        question,
+        sessionId,
         toolCalls,
         answerChars: result.text.length,
         latencyMs: Date.now() - startMs,
@@ -63,16 +85,21 @@ const adagentFlow = ai.defineFlow(
     } catch (e) {
       // Genkit/Google AI error objects can crash util.inspect in Firebase's
       // logger — log plain strings only.
+      // NB: field must not be named "message" — the logger merges this object
+      // into jsonPayload and a "message" key would clobber the log marker.
       logger.error("adagent_turn_error", {
-        question: input,
+        question,
+        sessionId,
         latencyMs: Date.now() - startMs,
-        message: e instanceof Error ? e.message : String(e),
-        stack: e instanceof Error ? e.stack : undefined,
+        error: e instanceof Error ? e.message : String(e),
+        errorStack: e instanceof Error ? e.stack : undefined,
       });
       throw e;
     }
   },
 );
+
+export { submitFeedback } from "./feedback.js";
 
 export const adagent = onCallGenkit(
   {
