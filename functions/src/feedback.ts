@@ -6,9 +6,9 @@
  */
 
 import { onCall, HttpsError } from "firebase-functions/https";
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import * as logger from "firebase-functions/logger";
+import { getDb } from "./firestore.js";
 
 const MAX_TEXT_CHARS = 4000;
 
@@ -44,8 +44,7 @@ function parsePayload(data: unknown): FeedbackPayload {
 export const submitFeedback = onCall({ enforceAppCheck: true }, async (req) => {
   const payload = parsePayload(req.data);
 
-  if (!getApps().length) initializeApp();
-  await getFirestore()
+  await getDb()
     .collection("feedback")
     .add({
       verdict: payload.verdict,

@@ -15,16 +15,29 @@ import { onCallGenkit } from "firebase-functions/https";
 import { defineSecret } from "firebase-functions/params";
 const apiKey = defineSecret("GEMINI_API_KEY");
 
-// The Firebase telemetry plugin exports a combination of metrics, traces, and logs to Google Cloud
-// Observability. Traces include full tool inputs/outputs — the detailed half of the
-// per-turn record; the structured "adagent_turn" log below is the cheap queryable half.
-// See https://firebase.google.com/docs/genkit/observability/telemetry-collection.
+// Observability has three deliberate layers (issue #7):
+//  1. OTel traces/metrics via the Firebase telemetry plugin → Cloud Trace /
+//     Monitoring. Full span-level fidelity for interactively debugging a
+//     single turn in the Genkit Monitoring console. Span schema is a Genkit
+//     internal — nothing of ours may parse it.
+//  2. The `turns` Firestore collection (TurnStore): one self-contained,
+//     schema-stable record per turn. System of record for eval mining
+//     (scripts/mineTurns.ts) — no log-retention window, joins with
+//     `feedback` in the same database.
+//  3. The `adagent_turn` log line: synchronous stdout, delivered even if the
+//     instance dies mid-turn. Ops/alerting signal and fallback record.
 import { enableFirebaseTelemetry } from "@genkit-ai/firebase";
 import * as logger from "firebase-functions/logger";
 import { UserFacingError } from "genkit";
 import { parseTurnRequest } from "./request.js";
-import { checkRateLimit } from "./rateLimiter.js";
+import { getDb } from "./firestore.js";
+import { RateLimiter } from "./rateLimiter.js";
+import { TurnStore, summarizeToolActivity } from "./turnStore.js";
 enableFirebaseTelemetry();
+
+const db = getDb();
+const rateLimiter = new RateLimiter(db);
+const turnStore = new TurnStore(db);
 
 const adagentFlow = ai.defineFlow(
   {
@@ -36,22 +49,25 @@ const adagentFlow = ai.defineFlow(
     // prompt (it renders as "[object Object]" and the model never sees the
     // question). Do not add inputSchema here — see CLAUDE.md gotcha.
     const { question, sessionId } = parseTurnRequest(input);
-    try {
-      const rate = await checkRateLimit(sessionId);
-      if (!rate.allowed) {
-        logger.warn("adagent_rate_limited", {
-          blockedBy: rate.blockedBy,
-          retryAfterSecs: rate.retryAfterSecs,
-          sessionId,
-        });
-        throw new UserFacingError(
-          "RESOURCE_EXHAUSTED",
-          "FICSIT compliance notice: this terminal has exceeded its allotted " +
-            "inquiry quota. Productivity is appreciated — please resume " +
-            `in ${Math.ceil((rate.retryAfterSecs ?? 3600) / 60)} minutes.`,
-        );
-      }
 
+    // Rate-limit blocks are thrown before the recorded section: they carry no
+    // retrieval signal, so they get their own log line instead of a turn doc.
+    const rate = await rateLimiter.check(sessionId);
+    if (!rate.allowed) {
+      logger.warn("adagent_rate_limited", {
+        blockedBy: rate.blockedBy,
+        retryAfterSecs: rate.retryAfterSecs,
+        sessionId,
+      });
+      throw new UserFacingError(
+        "RESOURCE_EXHAUSTED",
+        "FICSIT compliance notice: this terminal has exceeded its allotted " +
+          "inquiry quota. Productivity is appreciated — please resume " +
+          `in ${Math.ceil((rate.retryAfterSecs ?? 3600) / 60)} minutes.`,
+      );
+    }
+
+    try {
       // Construct prompt using prompts/adagent.prompt.
       const adagentPrompt = ai.prompt("adagent");
 
@@ -63,22 +79,24 @@ const adagentFlow = ai.defineFlow(
 
       const result = await response;
 
-      // One structured record per turn: question → tool calls → answer shape.
-      // This is the raw material for gold-set / accuracy-dataset triage
-      // (issue #7). No user identifiers.
-      const toolCalls = result.messages
-        .flatMap((m) => m.content)
-        .filter((part) => part.toolRequest)
-        .map((part) => ({
-          tool: part.toolRequest?.name,
-          input: part.toolRequest?.input,
-        }));
+      const toolCalls = summarizeToolActivity(result.messages);
+      const latencyMs = Date.now() - startMs;
       logger.info("adagent_turn", {
         question,
         sessionId,
-        toolCalls,
+        toolCalls: toolCalls.map(({ tool, input }) => ({ tool, input })),
         answerChars: result.text.length,
-        latencyMs: Date.now() - startMs,
+        latencyMs,
+      });
+      // Awaited so the write survives instance freeze; the answer has already
+      // been streamed via sendChunk, so players don't feel this. record()
+      // never throws.
+      await turnStore.record({
+        question,
+        sessionId,
+        toolCalls,
+        answer: result.text,
+        latencyMs,
       });
 
       return result.text;
@@ -87,12 +105,21 @@ const adagentFlow = ai.defineFlow(
       // logger — log plain strings only.
       // NB: field must not be named "message" — the logger merges this object
       // into jsonPayload and a "message" key would clobber the log marker.
+      const latencyMs = Date.now() - startMs;
+      const error = e instanceof Error ? e.message : String(e);
       logger.error("adagent_turn_error", {
         question,
         sessionId,
-        latencyMs: Date.now() - startMs,
-        error: e instanceof Error ? e.message : String(e),
+        latencyMs,
+        error,
         errorStack: e instanceof Error ? e.stack : undefined,
+      });
+      await turnStore.record({
+        question,
+        sessionId,
+        toolCalls: [],
+        latencyMs,
+        error,
       });
       throw e;
     }

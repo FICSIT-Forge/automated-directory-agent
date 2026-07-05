@@ -22,7 +22,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "mine:logs": "tsx scripts/mineLogs.ts"
+    "mine:turns": "tsx scripts/mineTurns.ts"
   },
   "engines": {
     "node": "22"

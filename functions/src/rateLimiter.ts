@@ -8,13 +8,16 @@
  *  - global daily cap: a hard cost backstop across all users
  *
  * The decision math is pure (see decide) and unit-tested; Firestore I/O is a
- * thin transaction around it. Any infrastructure error FAILS OPEN: for a beta,
- * availability beats strict limiting, and the global cap still bounds a full
- * outage of the limiter at one day of spend.
+ * thin transaction around it (RateLimiter, also unit-tested via an injected
+ * fake). Any infrastructure error FAILS OPEN: for a beta, availability beats
+ * strict limiting, and the global cap still bounds a full outage of the
+ * limiter at one day of spend.
+ *
+ * Window docs carry an `expiresAt` timestamp so a Firestore TTL policy can
+ * garbage-collect stale session docs — see scripts/provisionFirestore.sh.
  */
 
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import type { Firestore } from "firebase-admin/firestore";
 import * as logger from "firebase-functions/logger";
 
 // ─── Pure decision logic ────────────────────────────────────────────────────
@@ -76,29 +79,18 @@ export function decide(
   return { allowed: true, updates };
 }
 
-// ─── Firestore-backed check ─────────────────────────────────────────────────
+// ─── Firestore-backed limiter ───────────────────────────────────────────────
 
-const SESSION_PER_HOUR = Number(process.env.RATE_LIMIT_SESSION_PER_HOUR) || 30;
-const GLOBAL_PER_DAY = Number(process.env.RATE_LIMIT_GLOBAL_PER_DAY) || 1000;
+export interface RateLimits {
+  readonly sessionPerHour: number;
+  readonly globalPerDay: number;
+}
 
-function specsFor(sessionId: string | undefined): WindowSpec[] {
-  const specs: WindowSpec[] = [
-    {
-      name: "global daily cap",
-      docId: "global",
-      limit: GLOBAL_PER_DAY,
-      windowSecs: 24 * 60 * 60,
-    },
-  ];
-  if (sessionId) {
-    specs.push({
-      name: "session hourly limit",
-      docId: `session:${sessionId}`,
-      limit: SESSION_PER_HOUR,
-      windowSecs: 60 * 60,
-    });
-  }
-  return specs;
+export function limitsFromEnv(): RateLimits {
+  return {
+    sessionPerHour: Number(process.env.RATE_LIMIT_SESSION_PER_HOUR) || 30,
+    globalPerDay: Number(process.env.RATE_LIMIT_GLOBAL_PER_DAY) || 1000,
+  };
 }
 
 export interface RateLimitResult {
@@ -107,35 +99,68 @@ export interface RateLimitResult {
   readonly retryAfterSecs?: number;
 }
 
-export async function checkRateLimit(
-  sessionId: string | undefined,
-): Promise<RateLimitResult> {
-  const specs = specsFor(sessionId);
-  try {
-    if (!getApps().length) initializeApp();
-    const db = getFirestore();
-    const col = db.collection("rateLimits");
+/** Grace period past window end before TTL may delete a window doc. */
+const EXPIRY_SLACK_SECS = 24 * 60 * 60;
 
-    return await db.runTransaction(async (tx) => {
-      const states = new Map<string, WindowState>();
-      for (const spec of specs) {
-        const snap = await tx.get(col.doc(spec.docId));
-        if (snap.exists) states.set(spec.docId, snap.data() as WindowState);
-      }
+export class RateLimiter {
+  constructor(
+    private readonly db: Firestore,
+    private readonly limits: RateLimits = limitsFromEnv(),
+    private readonly now: () => number = Date.now,
+  ) {}
 
-      const decision = decide(Date.now(), specs, states);
-      if (decision.allowed) {
-        for (const [docId, state] of decision.updates) {
-          tx.set(col.doc(docId), state);
+  private specsFor(sessionId: string | undefined): WindowSpec[] {
+    const specs: WindowSpec[] = [
+      {
+        name: "global daily cap",
+        docId: "global",
+        limit: this.limits.globalPerDay,
+        windowSecs: 24 * 60 * 60,
+      },
+    ];
+    if (sessionId) {
+      specs.push({
+        name: "session hourly limit",
+        docId: `session:${sessionId}`,
+        limit: this.limits.sessionPerHour,
+        windowSecs: 60 * 60,
+      });
+    }
+    return specs;
+  }
+
+  async check(sessionId: string | undefined): Promise<RateLimitResult> {
+    const specs = this.specsFor(sessionId);
+    try {
+      const col = this.db.collection("rateLimits");
+
+      return await this.db.runTransaction(async (tx) => {
+        const states = new Map<string, WindowState>();
+        for (const spec of specs) {
+          const snap = await tx.get(col.doc(spec.docId));
+          if (snap.exists) states.set(spec.docId, snap.data() as WindowState);
         }
-      }
-      return decision;
-    });
-  } catch (e) {
-    // Fail open: never turn a limiter outage into an agent outage.
-    logger.warn("rate_limiter_unavailable", {
-      message: e instanceof Error ? e.message : String(e),
-    });
-    return { allowed: true };
+
+        const decision = decide(this.now(), specs, states);
+        if (decision.allowed) {
+          for (const spec of specs) {
+            const state = decision.updates.get(spec.docId);
+            if (!state) continue;
+            const windowEndSecs = (state.windowId + 1) * spec.windowSecs;
+            tx.set(col.doc(spec.docId), {
+              ...state,
+              expiresAt: new Date((windowEndSecs + EXPIRY_SLACK_SECS) * 1000),
+            });
+          }
+        }
+        return decision;
+      });
+    } catch (e) {
+      // Fail open: never turn a limiter outage into an agent outage.
+      logger.warn("rate_limiter_unavailable", {
+        reason: e instanceof Error ? e.message : String(e),
+      });
+      return { allowed: true };
+    }
   }
 }
