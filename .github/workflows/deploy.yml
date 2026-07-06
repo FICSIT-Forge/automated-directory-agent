@@ -1,0 +1,56 @@
+# Deploy from main (issue #8): functions + hosting + firestore rules/indexes
+# in one `firebase deploy`, authenticated via Direct Workload Identity
+# Federation — no long-lived keys. The WIF pool/provider and IAM grants are
+# provisioned outside this file (see scripts/provisionFirestore.sh header for
+# the pattern); the provider is scoped to this repository only.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+# Queue deploys instead of cancelling: a half-cancelled firebase deploy can
+# leave functions and hosting on different revisions.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            functions/pnpm-lock.yaml
+            web/pnpm-lock.yaml
+      # firebase.json's functions predeploy (format → lint → build) runs pnpm
+      # inside functions/, so deps must be installed before `firebase deploy`.
+      - name: Install functions dependencies
+        working-directory: functions
+        run: pnpm install --frozen-lockfile
+      - name: Build web (Nuxt SSG)
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ficsit-forge
+          workload_identity_provider: projects/475186372635/locations/global/workloadIdentityPools/github/providers/adagent-repo
+      - name: Deploy functions + hosting + firestore
+        run: >
+          pnpm dlx firebase-tools@latest deploy
+          --only functions,hosting:adagent,firestore
+          --project ficsit-forge --non-interactive --force

@@ -1,0 +1,41 @@
+# Retrieval-quality gate (issue #8): runs `pnpm eval` (Hit@K/MRR vs
+# eval/baseline-metrics.json) only when retrieval-relevant inputs change.
+# Needs the GEMINI_API_KEY repo secret to embed the ~34 gold-set queries.
+# Deliberately NOT a required check — it only runs on these paths.
+name: Retrieval eval
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "functions/src/data/**"
+      - "functions/eval/**"
+      - "functions/game_data_index.json"
+      - "functions/scripts/evalRetrieval.ts"
+      - "functions/scripts/buildIndex.ts"
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    name: retrieval-eval
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: functions/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm eval
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
