@@ -37,6 +37,12 @@ automated-directory-agent/
   live in `firestore.rules` / `firestore.indexes.json`, deployed with
   `firebase deploy --only firestore`. TTL on `rateLimits.expiresAt` is the one piece
   the Firebase CLI can't do — `scripts/provisionFirestore.sh` (idempotent gcloud)
+- CI/CD (issue #8): GitHub Actions in `.github/workflows/` — `ci.yml` PR checks
+  (`functions` + `web` jobs, required by main's branch protection), `eval.yml`
+  path-filtered retrieval gate (needs `GEMINI_API_KEY` repo secret), `deploy.yml`
+  deploys functions+hosting+firestore on push to main, `preview.yml` hosting
+  preview channels on web PRs. GCP auth is Direct Workload Identity Federation
+  (pool `github`, provider `adagent-repo`, scoped to this repo; no SA keys)
 
 ## Commands
 
@@ -127,16 +133,14 @@ Rationale: real player traffic is both the requirements document for Issue #6 (w
 wiki content/aliases matter) and the observed-miss generator the saturated eval gold
 set needs. Do NOT build #6 first in isolation.
 
-1. **#7 Instrumentation** (pre-publish prerequisite): Genkit telemetry, durable
-   per-turn records (question → tool calls → top-K + scores → answer) in the
-   `turns` Firestore collection, thumbs up/down in web UI, strategy-question
-   guardrail in `adagent.prompt`, rate limiting
-2. **Soft-launch** to a small player circle (beta framing) once #7 lands
+1. **#7 Instrumentation** — DONE, merged (PR #12) and deployed to prod 2026-07-06
+2. **Soft-launch** to a small player circle (beta framing) — UNBLOCKED, next up
 3. **#6 Wiki RAG** built during the traffic-collection window, informed by it — parallel
    index + `searchWikiGuides` tool; the eval framework (`src/eval/metrics.ts`,
    gold-set schema) is source-agnostic and reusable; traffic-derived cases (e.g.
    gold-set `syn-03` "HOR") become its acceptance tests
-4. **In parallel:** #8 CI/CD (PR checks + deploys from main), #9 move the ~74MB
+4. **In parallel:** #8 CI/CD (PR checks + deploys from main — implemented, see
+   Infrastructure above), #9 move the ~74MB
    `game_data_index.json` out of git (history bloat per rebuild), #10 Layer-3
    LLM-judge answer-accuracy eval (where #6 acceptance tests and #7 thumbs-down
    triage converge)
