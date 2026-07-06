@@ -49,9 +49,13 @@ jobs:
         with:
           project_id: ficsit-forge
           workload_identity_provider: projects/475186372635/locations/global/workloadIdentityPools/github/providers/adagent-repo
+      # Pinned to 15.22.1: 15.22.2+ has a WIF/ADC auth regression (crashes on
+      # external_account credentials — firebase/firebase-tools#10716; here it
+      # surfaced as "Cannot read properties of undefined (reading
+      # 'access_token')"). Unpin once the fix ships and a WIF deploy succeeds.
       - name: Deploy functions + hosting + firestore
         run: >
-          pnpm dlx firebase-tools@latest deploy
+          pnpm dlx firebase-tools@15.22.1 deploy
           --only functions,hosting:adagent,firestore
           --project ficsit-forge --non-interactive --force
       # firebase-tools prints only "An unexpected error has occurred." for

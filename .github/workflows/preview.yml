@@ -41,9 +41,11 @@ jobs:
         with:
           project_id: ficsit-forge
           workload_identity_provider: projects/475186372635/locations/global/workloadIdentityPools/github/providers/adagent-repo
+      # Pinned to 15.22.1 for the WIF auth regression in 15.22.2+
+      # (firebase/firebase-tools#10716) — keep in sync with deploy.yml.
       - name: Deploy preview channel
         run: |
-          pnpm dlx firebase-tools@latest hosting:channel:deploy "pr-${{ github.event.number }}" \
+          pnpm dlx firebase-tools@15.22.1 hosting:channel:deploy "pr-${{ github.event.number }}" \
             --project ficsit-forge --expires 7d | tee channel.log
           {
             echo "### Hosting preview"
