@@ -54,3 +54,8 @@ jobs:
           pnpm dlx firebase-tools@latest deploy
           --only functions,hosting:adagent,firestore
           --project ficsit-forge --non-interactive --force
+      # firebase-tools prints only "An unexpected error has occurred." for
+      # uncaught exceptions; the stack goes to firebase-debug.log.
+      - name: Dump firebase-debug.log on failure
+        if: failure()
+        run: tail -n 200 firebase-debug.log
