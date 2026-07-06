@@ -15,39 +15,118 @@ import { onCallGenkit } from "firebase-functions/https";
 import { defineSecret } from "firebase-functions/params";
 const apiKey = defineSecret("GEMINI_API_KEY");
 
-// The Firebase telemetry plugin exports a combination of metrics, traces, and logs to Google Cloud
-// Observability. See https://firebase.google.com/docs/genkit/observability/telemetry-collection.
+// Observability has three deliberate layers (issue #7):
+//  1. OTel traces/metrics via the Firebase telemetry plugin → Cloud Trace /
+//     Monitoring. Full span-level fidelity for interactively debugging a
+//     single turn in the Genkit Monitoring console. Span schema is a Genkit
+//     internal — nothing of ours may parse it.
+//  2. The `turns` Firestore collection (TurnStore): one self-contained,
+//     schema-stable record per turn. System of record for eval mining
+//     (scripts/mineTurns.ts) — no log-retention window, joins with
+//     `feedback` in the same database.
+//  3. The `adagent_turn` log line: synchronous stdout, delivered even if the
+//     instance dies mid-turn. Ops/alerting signal and fallback record.
 import { enableFirebaseTelemetry } from "@genkit-ai/firebase";
+import * as logger from "firebase-functions/logger";
+import { UserFacingError } from "genkit";
+import { parseTurnRequest } from "./request.js";
+import { getDb } from "./firestore.js";
+import { RateLimiter } from "./rateLimiter.js";
+import { TurnStore, summarizeToolActivity } from "./turnStore.js";
 enableFirebaseTelemetry();
+
+const db = getDb();
+const rateLimiter = new RateLimiter(db);
+const turnStore = new TurnStore(db);
 
 const adagentFlow = ai.defineFlow(
   {
     name: "adagentFlow",
   },
   async (input, { sendChunk }) => {
+    const startMs = Date.now();
+    // Normalize the client payload FIRST: the raw object must never reach the
+    // prompt (it renders as "[object Object]" and the model never sees the
+    // question). Do not add inputSchema here — see CLAUDE.md gotcha.
+    const { question, sessionId } = parseTurnRequest(input);
+
+    // Rate-limit blocks are thrown before the recorded section: they carry no
+    // retrieval signal, so they get their own log line instead of a turn doc.
+    const rate = await rateLimiter.check(sessionId);
+    if (!rate.allowed) {
+      logger.warn("adagent_rate_limited", {
+        blockedBy: rate.blockedBy,
+        retryAfterSecs: rate.retryAfterSecs,
+        sessionId,
+      });
+      throw new UserFacingError(
+        "RESOURCE_EXHAUSTED",
+        "FICSIT compliance notice: this terminal has exceeded its allotted " +
+          "inquiry quota. Productivity is appreciated — please resume " +
+          `in ${Math.ceil((rate.retryAfterSecs ?? 3600) / 60)} minutes.`,
+      );
+    }
+
     try {
       // Construct prompt using prompts/adagent.prompt.
       const adagentPrompt = ai.prompt("adagent");
 
-      // The prompt expects { question: string } based on the schema
-      const { response, stream } = adagentPrompt.stream({ question: input });
+      const { response, stream } = adagentPrompt.stream({ question });
 
       for await (const chunk of stream) {
-        console.log("Chunk received:", JSON.stringify(chunk));
         sendChunk(chunk.text);
       }
 
-      // Handle the response from the model API. In this sample, we just
-      // convert it to a string, but more complicated flows might coerce the
-      // response into structured output or chain the response into another
-      // LLM call, etc.
-      return (await response).text;
+      const result = await response;
+
+      const toolCalls = summarizeToolActivity(result.messages);
+      const latencyMs = Date.now() - startMs;
+      logger.info("adagent_turn", {
+        question,
+        sessionId,
+        toolCalls: toolCalls.map(({ tool, input }) => ({ tool, input })),
+        answerChars: result.text.length,
+        latencyMs,
+      });
+      // Awaited so the write survives instance freeze; the answer has already
+      // been streamed via sendChunk, so players don't feel this. record()
+      // never throws.
+      await turnStore.record({
+        question,
+        sessionId,
+        toolCalls,
+        answer: result.text,
+        latencyMs,
+      });
+
+      return result.text;
     } catch (e) {
-      console.error("ADAGENT FLOW ERROR:", e);
+      // Genkit/Google AI error objects can crash util.inspect in Firebase's
+      // logger — log plain strings only.
+      // NB: field must not be named "message" — the logger merges this object
+      // into jsonPayload and a "message" key would clobber the log marker.
+      const latencyMs = Date.now() - startMs;
+      const error = e instanceof Error ? e.message : String(e);
+      logger.error("adagent_turn_error", {
+        question,
+        sessionId,
+        latencyMs,
+        error,
+        errorStack: e instanceof Error ? e.stack : undefined,
+      });
+      await turnStore.record({
+        question,
+        sessionId,
+        toolCalls: [],
+        latencyMs,
+        error,
+      });
       throw e;
     }
   },
 );
+
+export { submitFeedback } from "./feedback.js";
 
 export const adagent = onCallGenkit(
   {

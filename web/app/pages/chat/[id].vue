@@ -46,6 +46,24 @@ const handleSubmit = async () => {
   }
 };
 
+// Text of the user question that a given assistant message answered — the
+// nearest preceding user message. Pairs question+answer for feedback docs.
+function questionFor(messageId: string): string {
+  const idx = chat.messages.findIndex((m) => m.id === messageId);
+  for (let i = idx - 1; i >= 0; i--) {
+    const m = chat.messages[i];
+    if (m?.role === "user") return messageText(m);
+  }
+  return "";
+}
+
+function messageText(message: { parts: Array<{ type: string }> }): string {
+  return message.parts
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join("");
+}
+
 function getFileName(url: string): string {
   try {
     const urlObj = new URL(url);
@@ -152,6 +170,12 @@ onUnmounted(() => {
                 :preview-url="part.url"
               />
             </template>
+            <MessageFeedback
+              v-if="message.role === 'assistant' && chat.status === 'ready'"
+              :question="questionFor(message.id)"
+              :answer="messageText(message)"
+              :session-id="route.params.id as string"
+            />
           </template>
         </UChatMessages>
 
@@ -163,13 +187,17 @@ onUnmounted(() => {
           @submit="handleSubmit"
         >
           <template #footer>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1 min-w-0">
               <UButton
                 icon="i-lucide-paperclip"
                 color="neutral"
                 variant="ghost"
                 size="sm"
               />
+              <span class="text-[11px] text-dimmed truncate">
+                Questions &amp; answers are logged to improve ADA — please don't
+                include personal information.
+              </span>
             </div>
             <UChatPromptSubmit
               color="neutral"

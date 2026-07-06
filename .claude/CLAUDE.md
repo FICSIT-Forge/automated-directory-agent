@@ -32,6 +32,11 @@ automated-directory-agent/
 - AppCheck enforced on the `adagent` callable function
 - GEMINI_API_KEY stored in Cloud Secret Manager
 - Cloud Function memory: `1GiB` (required for ~73MB game data index)
+- Firestore is **server-side only** (`turns`, `feedback`, `rateLimits` collections;
+  Admin SDK via `functions/src/firestore.ts`). Rules (deny-all for clients) + indexes
+  live in `firestore.rules` / `firestore.indexes.json`, deployed with
+  `firebase deploy --only firestore`. TTL on `rateLimits.expiresAt` is the one piece
+  the Firebase CLI can't do — `scripts/provisionFirestore.sh` (idempotent gcloud)
 
 ## Commands
 
@@ -46,6 +51,7 @@ pnpm build:index          # Generate game data embeddings → game_data_index.js
 pnpm verify:index         # Validate generated embeddings index
 pnpm verify:alternates    # Check EST_Alternate / hard-drive tagging invariants
 pnpm eval                 # Layer-2 retrieval eval (Hit@K/MRR gate vs baseline)
+pnpm mine:turns           # Triage production turns + feedback → eval candidates
 pnpm deploy               # Deploy functions only
 ```
 
@@ -100,6 +106,20 @@ Work here is sporadic — weeks can pass between sessions. When resuming:
 
 **New game version:** update `DOCS_FILENAME` in `functions/scripts/paths.ts`, then rebuild + verify + eval as above.
 
+## Observability (issue #7) — three deliberate layers
+
+1. **OTel traces/metrics** (`enableFirebaseTelemetry` → Cloud Trace/Monitoring):
+   span-level fidelity for interactively debugging a single turn in the Genkit
+   Monitoring console. The span schema is a Genkit internal — never write code
+   that parses it.
+2. **`turns` Firestore collection** (`TurnStore` in `functions/src/turnStore.ts`):
+   one self-contained record per turn — question, tool calls, top-K names + scores,
+   answer (capped 4KB). System of record for eval mining (`pnpm mine:turns` joins it
+   with `feedback`); no log-retention window. Rate-limit blocks are deliberately
+   NOT recorded as turns.
+3. **`adagent_turn` log line**: synchronous stdout — survives instance death;
+   ops/alerting signal and fallback if the Firestore write fails.
+
 ## Active Work & Roadmap
 
 **Decided sequence (2026-07-02): instrument → publish → build #6 from real traffic.**
@@ -107,9 +127,10 @@ Rationale: real player traffic is both the requirements document for Issue #6 (w
 wiki content/aliases matter) and the observed-miss generator the saturated eval gold
 set needs. Do NOT build #6 first in isolation.
 
-1. **#7 Instrumentation** (pre-publish prerequisite): Genkit telemetry, per-turn
-   structured logs (question → tool calls → top-K + scores → answer), thumbs up/down
-   in web UI, strategy-question guardrail in `adagent.prompt`, rate limiting
+1. **#7 Instrumentation** (pre-publish prerequisite): Genkit telemetry, durable
+   per-turn records (question → tool calls → top-K + scores → answer) in the
+   `turns` Firestore collection, thumbs up/down in web UI, strategy-question
+   guardrail in `adagent.prompt`, rate limiting
 2. **Soft-launch** to a small player circle (beta framing) once #7 lands
 3. **#6 Wiki RAG** built during the traffic-collection window, informed by it — parallel
    index + `searchWikiGuides` tool; the eval framework (`src/eval/metrics.ts`,
