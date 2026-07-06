@@ -45,14 +45,20 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
+      # WIF with service-account impersonation, NOT direct WIF: firebase-tools
+      # crashes on direct external_account credentials (its ADC token cache
+      # reads tokens that are never populated — "Cannot read properties of
+      # undefined (reading 'access_token')", seen on 15.22.1 and 15.22.4).
+      # Impersonation mints short-lived tokens with a client_email, the shape
+      # firebase-tools handles. Still keyless: no exported SA keys.
       - uses: google-github-actions/auth@v3
         with:
           project_id: ficsit-forge
           workload_identity_provider: projects/475186372635/locations/global/workloadIdentityPools/github/providers/adagent-repo
-      # Pinned to 15.22.1: 15.22.2+ has a WIF/ADC auth regression (crashes on
-      # external_account credentials — firebase/firebase-tools#10716; here it
-      # surfaced as "Cannot read properties of undefined (reading
-      # 'access_token')"). Unpin once the fix ships and a WIF deploy succeeds.
+          service_account: github-deployer@ficsit-forge.iam.gserviceaccount.com
+      # Pinned to 15.22.1: 15.22.2+ has a WIF/ADC auth regression
+      # (firebase/firebase-tools#10716). Unpin once the fix ships and a WIF
+      # deploy succeeds.
       - name: Deploy functions + hosting + firestore
         run: >
           pnpm dlx firebase-tools@15.22.1 deploy

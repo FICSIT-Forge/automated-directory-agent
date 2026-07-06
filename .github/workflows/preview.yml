@@ -37,10 +37,12 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
+      # Impersonation required — see the note in deploy.yml.
       - uses: google-github-actions/auth@v3
         with:
           project_id: ficsit-forge
           workload_identity_provider: projects/475186372635/locations/global/workloadIdentityPools/github/providers/adagent-repo
+          service_account: github-deployer@ficsit-forge.iam.gserviceaccount.com
       # Pinned to 15.22.1 for the WIF auth regression in 15.22.2+
       # (firebase/firebase-tools#10716) — keep in sync with deploy.yml.
       - name: Deploy preview channel
