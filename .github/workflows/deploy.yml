@@ -6,8 +6,18 @@
 name: Deploy
 
 on:
+  # Manual escape hatch: redeploy current main (e.g. after changing this
+  # workflow, or when a skipped docs-only merge should ship anyway).
+  workflow_dispatch:
   push:
     branches: [main]
+    # Skip deploys for merges that can't change what's deployed. Safe because
+    # each deploy ships the full state of main HEAD — a skipped run never
+    # causes drift; the next qualifying merge catches everything up.
+    paths-ignore:
+      - "**.md"
+      - ".claude/**"
+      - ".github/**"
 
 # Queue deploys instead of cancelling: a half-cancelled firebase deploy can
 # leave functions and hosting on different revisions.
