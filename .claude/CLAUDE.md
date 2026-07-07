@@ -41,8 +41,11 @@ automated-directory-agent/
   (`functions` + `web` jobs, required by main's branch protection), `eval.yml`
   path-filtered retrieval gate (needs `GEMINI_API_KEY` repo secret), `deploy.yml`
   deploys functions+hosting+firestore on push to main, `preview.yml` hosting
-  preview channels on web PRs. GCP auth is Direct Workload Identity Federation
-  (pool `github`, provider `adagent-repo`, scoped to this repo; no SA keys)
+  preview channels on web PRs. GCP auth is WIF **with service-account
+  impersonation** (pool `github`, provider `adagent-repo` scoped to this repo →
+  impersonates `github-deployer@` SA holding least-privilege custom role
+  `adagentDeployer`; no SA keys). Direct WIF does NOT work: firebase-tools
+  crashes on external_account credentials ("reading 'access_token'")
 
 ## Commands
 
