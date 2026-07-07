@@ -68,4 +68,4 @@ jobs:
       # uncaught exceptions; the stack goes to firebase-debug.log.
       - name: Dump firebase-debug.log on failure
         if: failure()
-        run: tail -n 200 firebase-debug.log
+        run: tail -n 200 firebase-debug.log || echo "no firebase-debug.log — the CLI failed cleanly (error is in the deploy step output above)"
