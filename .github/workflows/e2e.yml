@@ -40,8 +40,14 @@ jobs:
           cache: pnpm
           cache-dependency-path: functions/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # Same firebase-tools pin as deploy.yml (see the note there). The
-      # emulator needs Java, which ubuntu-latest preinstalls.
+      # The Firestore emulator needs Java 21+ (firebase-tools requirement);
+      # the runner's default JDK is older, but 21 is preinstalled — this just
+      # selects it.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      # Same firebase-tools pin as deploy.yml (see the note there).
       - name: Run agent e2e against Firestore emulator
         run: >
           pnpm dlx firebase-tools@15.22.1 emulators:exec --only firestore
