@@ -49,7 +49,8 @@ automated-directory-agent/
   (`functions` + `web` jobs, required by main's branch protection), `eval.yml`
   path-filtered retrieval gate (needs `GEMINI_API_KEY` repo secret), `deploy.yml`
   deploys functions+hosting+firestore on push to main, `preview.yml` hosting
-  preview channels on web PRs. GCP auth is WIF **with service-account
+  preview channels on web PRs, `e2e.yml` live-model agent e2e on functions PRs
+  (not required — model-dependent). GCP auth is WIF **with service-account
   impersonation** (pool `github`, provider `adagent-repo` scoped to this repo →
   impersonates `github-deployer@` SA holding least-privilege custom role
   `adagentDeployer`; no SA keys). Direct WIF does NOT work: firebase-tools
@@ -64,6 +65,7 @@ pnpm genkit:dev           # Genkit dev UI + watch
 pnpm genkit:emulate       # Genkit dev UI + Firebase emulator
 pnpm build                # tsc + lint + format check
 pnpm test                 # Vitest unit tests (parser, enricher, eval metrics)
+pnpm e2e                  # Agent e2e vs Firestore emulator (needs GEMINI_API_KEY; 2 live Gemini calls)
 pnpm build:index          # Generate game data embeddings → game_data_index.json
 pnpm verify:index         # Validate generated embeddings index
 pnpm verify:alternates    # Check EST_Alternate / hard-drive tagging invariants

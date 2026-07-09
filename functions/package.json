@@ -20,6 +20,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "test": "vitest run",
+    "e2e": "firebase emulators:exec --only firestore --project ficsit-forge 'node --import tsx scripts/e2eAgent.ts'",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "mine:turns": "tsx scripts/mineTurns.ts"
