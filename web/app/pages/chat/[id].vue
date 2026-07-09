@@ -1,14 +1,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { Chat } from "@ai-sdk/vue";
+import { GenkitChatTransport } from "@genkit-ai/vercel-ai/client";
 
-import { FirebaseChatTransport } from "~/utils/firebase-chat-transport";
-import { initializeApp } from "firebase/app";
-import { getFunctions } from "firebase/functions";
-import {
-  initializeAppCheck,
-  ReCaptchaEnterpriseProvider,
-} from "firebase/app-check";
+import { initFirebase, appCheckHeaders } from "~/utils/firebase";
 
 definePageMeta({
   layout: "dashboard",
@@ -19,14 +14,17 @@ const route = useRoute();
 const initialPrompt = useState<string | null>("chat-initial-prompt");
 const input = ref(""); // Manual input ref
 
-// Initialize Chat instance with our custom transport
-console.log("🔧 Creating Chat instance...");
+// Server-managed conversation: the chat id (a bare UUID from index.vue) is
+// sent as the agent's sessionId and history is persisted in Firestore by the
+// agent runtime — the client holds no conversation state (issue #18).
 const chat = new Chat({
   id: route.params.id as string,
-  transport: new FirebaseChatTransport(),
+  transport: new GenkitChatTransport({
+    url: config.public.agentUrl as string,
+    headers: appCheckHeaders,
+  }),
   messages: [],
 });
-console.log("🔧 Chat instance created:", chat);
 
 // Manual submit handler since we are using Chat class directly
 const handleSubmit = async () => {
@@ -77,56 +75,20 @@ function getFileName(url: string): string {
 
 // ... existing code ...
 
-// Initialize Firebase and handle initial prompt
+// Initialize Firebase (App Check + feedback callable) and handle the
+// initial prompt handed over from index.vue.
 onMounted(async () => {
-  console.log("🔄 Component onMounted called");
-
   try {
-    const response = await fetch("/__/firebase/init.json");
-    if (response.ok) {
-      const firebaseConfig = await response.json();
-      console.log("[Debug] Firebase Config Keys:", Object.keys(firebaseConfig));
-      console.log("[Debug] Recaptcha Key:", config.public.recaptchaSiteKey);
-      const app = initializeApp(firebaseConfig);
-
-      if (config.public.recaptchaSiteKey) {
-        initializeAppCheck(app, {
-          provider: new ReCaptchaEnterpriseProvider(
-            config.public.recaptchaSiteKey as string,
-          ),
-          isTokenAutoRefreshEnabled: true,
-        });
-      }
-      // Ensure functions instance is available for the transport
-      getFunctions(app);
-      console.log("🔄 Firebase initialized successfully");
-    } else {
-      console.warn(
-        "Could not load Firebase init.json. Connectivity may be limited.",
-      );
-    }
+    await initFirebase(config.public.recaptchaSiteKey as string);
   } catch (error) {
     console.error("Error initializing Firebase:", error);
   }
 
-  // Check for initial prompt passed from index.vue
   if (initialPrompt.value) {
     const prompt = initialPrompt.value;
     initialPrompt.value = null; // Clear state
-    console.log("🔄 Sending initial prompt:", prompt);
     await chat.sendMessage({ text: prompt });
   }
-
-  console.log("🔄 Component onMounted completed");
-});
-
-// Add lifecycle logging
-onBeforeUnmount(() => {
-  console.log("🔄 Component onBeforeUnmount called");
-});
-
-onUnmounted(() => {
-  console.log("🔄 Component onUnmounted called");
 });
 </script>
 
@@ -177,6 +139,9 @@ onUnmounted(() => {
               :session-id="route.params.id as string"
             />
           </template>
+          <template #indicator>
+            <ThinkingIndicator />
+          </template>
         </UChatMessages>
 
         <UChatPrompt
@@ -195,8 +160,8 @@ onUnmounted(() => {
                 size="sm"
               />
               <span class="text-[11px] text-dimmed truncate">
-                Questions &amp; answers are logged to improve ADA — please don't
-                include personal information.
+                Questions &amp; answers are logged to improve ADAgent — please
+                don't include personal information.
               </span>
             </div>
             <UChatPromptSubmit

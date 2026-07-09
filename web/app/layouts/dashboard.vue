@@ -5,7 +5,7 @@ const open = ref(false);
 const chats = ref([
   {
     id: "1",
-    label: "Welcome to ADA",
+    label: "Welcome to ADAgent",
     to: "/",
     icon: "i-lucide-message-circle",
   },

@@ -30,15 +30,20 @@
   "type": "module",
   "main": "lib/index.js",
   "dependencies": {
+    "@genkit-ai/express": "^1.39.0",
     "@genkit-ai/firebase": "^1.39.0",
     "@genkit-ai/google-genai": "^1.39.0",
     "@google-cloud/functions-framework": "^5.0.5",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "firebase-admin": "^14.1.0",
     "firebase-functions": "^7.2.5",
     "genkit": "^1.39.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^10.6.0",
     "firebase-functions-test": "^3.5.0",
