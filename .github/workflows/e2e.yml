@@ -1,0 +1,56 @@
+# Agent e2e (issue #18): real two-turn conversation through the Express app +
+# agent wire protocol against the Firestore emulator, with live Gemini calls
+# (2 per run — negligible cost, needs the GEMINI_API_KEY secret).
+#
+# Deliberately NOT a required check: it's path-filtered and its context
+# assertion depends on model output. If it flakes, soften the assertion in
+# functions/scripts/e2eAgent.ts rather than retry-hammering.
+name: Agent e2e
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "functions/src/**"
+      - "functions/prompts/**"
+      - "functions/package.json"
+      - "functions/pnpm-lock.yaml"
+      - ".github/workflows/e2e.yml"
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: agent-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: functions/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # The Firestore emulator needs Java 21+ (firebase-tools requirement);
+      # the runner's default JDK is older, but 21 is preinstalled — this just
+      # selects it.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      # Same firebase-tools pin as deploy.yml (see the note there).
+      - name: Run agent e2e against Firestore emulator
+        run: >
+          pnpm dlx firebase-tools@15.22.1 emulators:exec --only firestore
+          --project ficsit-forge 'node --import tsx scripts/e2eAgent.ts'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

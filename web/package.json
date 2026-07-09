@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@ai-sdk/vue": "^2.0.115",
+    "@genkit-ai/vercel-ai": "^0.2.0",
     "@nuxt/ui": "^4.2.1",
     "@nuxtjs/mdc": "0.19.1",
     "@types/uuid": "^11.0.0",

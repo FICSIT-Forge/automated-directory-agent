@@ -15,10 +15,13 @@ automated-directory-agent/
 ## Tech Stack
 
 **Backend (`functions/`):**
-- Genkit 1.30+ with `@genkit-ai/google-genai` plugin
+- Genkit 1.39 (**`genkit/beta`** — Agents API) with `@genkit-ai/google-genai` plugin
 - Model: `gemini-3-flash-preview` — Embedding: `googleai/gemini-embedding-001`
-- Firebase Cloud Functions 7 (`onCallGenkit` for streaming)
-- Node.js 22, TypeScript 5.9, ESM, pnpm
+- Conversational agent (`definePromptAgent`, issue #18): server-managed sessions in
+  Firestore (`FirestoreSessionStore`), served over the agent wire protocol by an
+  Express app in an `onRequest` function (`adagentApi`); `submitFeedback` remains
+  an `onCall` callable
+- Node.js 22, TypeScript 6, ESM, pnpm
 
 **Frontend (`web/`):**
 - Nuxt 4.2 + Nuxt UI 4.2 (AI Chat components)
@@ -29,10 +32,15 @@ automated-directory-agent/
 **Infrastructure:**
 - Firebase project: `ficsit-forge`
 - Firebase Hosting → `web/.output/public` (Nuxt SSG)
-- AppCheck enforced on the `adagent` callable function
+- AppCheck enforced via Express middleware on all three agent routes
+  (turn/getSnapshot/abort in `functions/src/app.ts`); bypassed only under the
+  emulator (`FUNCTIONS_EMULATOR`/`GENKIT_ENV=dev`). Web sends the token in the
+  `X-Firebase-AppCheck` header. Hosting rewrites `/api/**` → `adagentApi`
+  (same-origin; local dev sets `NUXT_PUBLIC_AGENT_URL` to the emulator URL)
 - GEMINI_API_KEY stored in Cloud Secret Manager
 - Cloud Function memory: `1GiB` (required for ~73MB game data index)
-- Firestore is **server-side only** (`turns`, `feedback`, `rateLimits` collections;
+- Firestore is **server-side only** (`turns`, `feedback`, `rateLimits`, and the
+  agent-managed `genkit-sessions[-pointers|-shards]` collections;
   Admin SDK via `functions/src/firestore.ts`). Rules (deny-all for clients) + indexes
   live in `firestore.rules` / `firestore.indexes.json`, deployed with
   `firebase deploy --only firestore`. TTL on `rateLimits.expiresAt` is the one piece
@@ -41,7 +49,8 @@ automated-directory-agent/
   (`functions` + `web` jobs, required by main's branch protection), `eval.yml`
   path-filtered retrieval gate (needs `GEMINI_API_KEY` repo secret), `deploy.yml`
   deploys functions+hosting+firestore on push to main, `preview.yml` hosting
-  preview channels on web PRs. GCP auth is WIF **with service-account
+  preview channels on web PRs, `e2e.yml` live-model agent e2e on functions PRs
+  (not required — model-dependent). GCP auth is WIF **with service-account
   impersonation** (pool `github`, provider `adagent-repo` scoped to this repo →
   impersonates `github-deployer@` SA holding least-privilege custom role
   `adagentDeployer`; no SA keys). Direct WIF does NOT work: firebase-tools
@@ -56,6 +65,7 @@ pnpm genkit:dev           # Genkit dev UI + watch
 pnpm genkit:emulate       # Genkit dev UI + Firebase emulator
 pnpm build                # tsc + lint + format check
 pnpm test                 # Vitest unit tests (parser, enricher, eval metrics)
+pnpm e2e                  # Agent e2e vs Firestore emulator (needs GEMINI_API_KEY; 2 live Gemini calls)
 pnpm build:index          # Generate game data embeddings → game_data_index.json
 pnpm verify:index         # Validate generated embeddings index
 pnpm verify:alternates    # Check EST_Alternate / hard-drive tagging invariants
@@ -75,7 +85,8 @@ pnpm deploy               # Deploy to Firebase Hosting (site: adagent)
 
 1. Use `pnpm genkit:emulate` for local development (required for AppCheck bypass)
 2. Prompt files live in `functions/prompts/` — edit `.prompt` files (Genkit dotprompt format)
-3. The main flow is `adagentFlow` in `functions/src/index.ts`
+3. The agent is `adagentAgent` in `functions/src/agent.ts` (wraps
+   `prompts/adagent.prompt`); HTTP surface + guards live in `functions/src/app.ts`
 4. Always run `pnpm build` before committing
 5. Firebase predeploy runs format → lint → build automatically
 
@@ -121,11 +132,14 @@ Work here is sporadic — weeks can pass between sessions. When resuming:
    span-level fidelity for interactively debugging a single turn in the Genkit
    Monitoring console. The span schema is a Genkit internal — never write code
    that parses it.
-2. **`turns` Firestore collection** (`TurnStore` in `functions/src/turnStore.ts`):
-   one self-contained record per turn — question, tool calls, top-K names + scores,
-   answer (capped 4KB). System of record for eval mining (`pnpm mine:turns` joins it
-   with `feedback`); no log-retention window. Rate-limit blocks are deliberately
-   NOT recorded as turns.
+2. **`turns` Firestore collection** (`TurnStore`, fed by
+   `TurnRecordingSessionStore` in `functions/src/agentSessionStore.ts` — a
+   decorator around the agent's session store that sees each turn exactly once
+   at snapshot save): one self-contained record per turn — question, tool
+   calls, top-K names + scores, answer (capped 4KB), sessionId. System of
+   record for eval mining (`pnpm mine:turns` joins it with `feedback`); its
+   schema is OURS and stays stable even when the beta agent snapshot format
+   changes. Rate-limit blocks and aborted turns are deliberately NOT recorded.
 3. **`adagent_turn` log line**: synchronous stdout — survives instance death;
    ops/alerting signal and fallback if the Firestore write fails.
 
@@ -161,7 +175,8 @@ aliases are the intended fix; see gold-set notes on syn-03/syn-04.
 
 ## Gotchas
 
-- **Do NOT add `inputSchema`/`outputSchema` to `adagentFlow`** — `onCallGenkit` passes `req.data` (object from client) directly to the Genkit action. Schema validation runs before the flow function, and the client sends `{ question: "..." }` not a plain string.
+- **Agent wire protocol body is `{ data: <AgentInput>, init: { sessionId } }`** — GenkitChatTransport puts the sessionId in `init`, NOT in `data`. Middleware reading the body must look there (see `rateLimitGuard` in `app.ts`). Chat ids must be bare UUIDs (transport enforces it).
 - **Genkit errors crash `util.inspect`** — Firebase's logger can't format complex Genkit/Google AI error objects. Sanitize to plain strings before logging in catch blocks.
 - **Game data index requires 1GiB memory** — `game_data_index.json` (~73MB) is parsed via `JSON.parse` at runtime. Default 256MB Cloud Functions memory causes OOM.
-- **Side-effect imports are required** — `import "./tools/gameDataTools.js"` in `index.ts` registers tools with Genkit. Without it, `adagent.prompt` fails with "Unable to resolve tool".
+- **Side-effect imports are required** — `import "./tools/gameDataTools.js"` in `agent.ts` registers tools with Genkit. Without it, `adagent.prompt` fails with "Unable to resolve tool".
+- **Session snapshots live in subcollections** — `genkit-sessions/{prefix}/snapshots/{id}`; query with `collectionGroup("snapshots")`, a plain collection get returns nothing.
