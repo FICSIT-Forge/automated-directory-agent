@@ -50,6 +50,23 @@ const RAW_DOCS = [
         mStackSize: "SS_HUGE",
         mEnergyValue: "300",
       },
+      {
+        // Fluid: Docs.json stores its recipe amounts in liters (issue #22).
+        ClassName: "Desc_LiquidOil_C",
+        mDisplayName: "Crude Oil",
+        mDescription: "Raw oil.",
+        mForm: "RF_LIQUID",
+        mStackSize: "SS_FLUID",
+        mEnergyValue: "0",
+      },
+      {
+        ClassName: "Desc_HeavyOilResidue_C",
+        mDisplayName: "Heavy Oil Residue",
+        mDescription: "Byproduct.",
+        mForm: "RF_LIQUID",
+        mStackSize: "SS_FLUID",
+        mEnergyValue: "0",
+      },
     ],
   },
   {
@@ -130,6 +147,42 @@ const RAW_DOCS = [
         mProduct: `(${itemAmount("Desc_IronPlate", 20)})`,
         mManufactoringDuration: "24.0",
         mProducedIn: `("${assetPath("Build_ConstructorMk1")}")`,
+      },
+      {
+        // Fluid amounts arrive in liters (3000 = 3 m³): the real Plastic
+        // recipe shape, mixing a fluid ingredient with solid + fluid products.
+        ClassName: "Recipe_Plastic_C",
+        mDisplayName: "Plastic",
+        mIngredients: `(${itemAmount("Desc_LiquidOil", 3000)})`,
+        mProduct: `(${itemAmount("Desc_IronPlate", 2)},${itemAmount("Desc_HeavyOilResidue", 1000)})`,
+        mManufactoringDuration: "6.0",
+        mProducedIn: `("${assetPath("Build_ConstructorMk1")}")`,
+      },
+    ],
+  },
+  {
+    NativeClass:
+      "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableWaterPump'",
+    Classes: [
+      {
+        ClassName: "Build_WaterPump_C",
+        mDisplayName: "Water Extractor",
+        mDescription: "Extracts water.",
+        mExtractCycleTime: "1.0",
+        mItemsPerCycle: "2000",
+        mPowerConsumption: "20",
+        mAllowedResourceForms: "(RF_LIQUID)",
+      },
+      {
+        // Placeholder mItemsPerCycle=1 (Resource Well Pressurizer shape):
+        // must NOT be liter-scaled despite fluid-only forms.
+        ClassName: "Build_Pressurizer_C",
+        mDisplayName: "Pressurizer",
+        mDescription: "Pressurizes wells.",
+        mExtractCycleTime: "1.0",
+        mItemsPerCycle: "1",
+        mPowerConsumption: "150",
+        mAllowedResourceForms: "(RF_LIQUID,RF_GAS,(INVALID))",
       },
     ],
   },
@@ -241,10 +294,11 @@ describe("DataParser.parse", () => {
     for (const e of entities)
       counts.set(e.entityType, (counts.get(e.entityType) ?? 0) + 1);
 
-    expect(counts.get("item")).toBe(3);
+    expect(counts.get("item")).toBe(5);
     expect(counts.get("manufacturer")).toBe(1);
     expect(counts.get("generator")).toBe(1);
-    expect(counts.get("recipe")).toBe(4);
+    expect(counts.get("extractor")).toBe(2);
+    expect(counts.get("recipe")).toBe(5);
     // Only the two milestones: EST_Alternate and EST_Tutorial are excluded.
     expect(counts.get("schematic")).toBe(2);
     // Customization recipes and building descriptors produce no entities.
@@ -287,6 +341,41 @@ describe("DataParser.parse", () => {
       expect(recipe.metadata.producedIn).toEqual(["Constructor"]);
     });
 
+    it("scales fluid amounts from liters to m³ and renders the unit (issue #22)", () => {
+      const recipe = byName<RecipeEntity>("recipe", "Plastic");
+      expect(recipe.metadata.ingredients).toEqual([
+        {
+          className: "Desc_LiquidOil_C",
+          displayName: "Crude Oil",
+          amount: 3,
+          ratePerMin: 30,
+          isFluid: true,
+        },
+      ]);
+      // Solid product untouched, fluid product scaled.
+      expect(recipe.metadata.products).toEqual([
+        {
+          className: "Desc_IronPlate_C",
+          displayName: "Iron Plate",
+          amount: 2,
+          ratePerMin: 20,
+        },
+        {
+          className: "Desc_HeavyOilResidue_C",
+          displayName: "Heavy Oil Residue",
+          amount: 1,
+          ratePerMin: 10,
+          isFluid: true,
+        },
+      ]);
+      expect(recipe.embeddingText).toContain(
+        "Ingredients: 3 m³ Crude Oil (30/min)",
+      );
+      expect(recipe.embeddingText).toContain(
+        "Products: 2x Iron Plate (20/min), 1 m³ Heavy Oil Residue (10/min)",
+      );
+    });
+
     it("flags alternate recipes by name and className", () => {
       const alt = byName<RecipeEntity>("recipe", "Alternate: Cast Screw");
       expect(alt.metadata.isAlternate).toBe(true);
@@ -294,6 +383,20 @@ describe("DataParser.parse", () => {
       expect(
         byName<RecipeEntity>("recipe", "Iron Plate").metadata.isAlternate,
       ).toBe(false);
+    });
+  });
+
+  describe("extractors", () => {
+    it("scales fluid extraction rates from liters to m³ (issue #22)", () => {
+      const pump = byName("extractor", "Water Extractor");
+      expect(pump.embeddingText).toContain("Base extraction rate: 120 m³/min");
+    });
+
+    it("does not scale placeholder itemsPerCycle values", () => {
+      const pressurizer = byName("extractor", "Pressurizer");
+      expect(pressurizer.embeddingText).toContain(
+        "Base extraction rate: 60/min",
+      );
     });
   });
 

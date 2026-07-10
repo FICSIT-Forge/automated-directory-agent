@@ -26,3 +26,4 @@ eval/reddit-candidates.json
 # mineLogs output — raw input for hand-labeling, not an artifact
 eval/log-candidates.json
 firestore-debug.log
+eval/turn-candidates.json
