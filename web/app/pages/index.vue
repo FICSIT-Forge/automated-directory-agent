@@ -47,15 +47,7 @@ const onSubmit = async () => {
             @submit="onSubmit"
           >
             <template #footer>
-              <div class="flex items-center gap-1">
-                <!-- Optional: File Upload Button if needed in future -->
-                <UButton
-                  icon="i-lucide-paperclip"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                />
-              </div>
+              <div class="flex items-center gap-1" />
               <UChatPromptSubmit color="neutral" size="sm" />
             </template>
           </UChatPrompt>
