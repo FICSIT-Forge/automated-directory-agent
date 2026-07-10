@@ -6,17 +6,24 @@
  * App Check tokens are attached to agent requests as the X-Firebase-AppCheck
  * header (verified by Express middleware server-side — the agent endpoint is
  * an HTTP function, not a callable, so the SDK doesn't do this for us).
+ *
+ * GOTCHA: GenkitChatTransport calls its `headers` function WITHOUT awaiting
+ * it (client.js resolveHeaders, @genkit-ai/vercel-ai 0.2.0), so it must be
+ * synchronous — an async function's Promise spreads to an empty object and
+ * the header silently disappears. We therefore keep the current token in a
+ * module variable via onTokenChanged (primed once at init; the SDK
+ * auto-refreshes it) and read it synchronously per request.
  */
 
 import { initializeApp } from "firebase/app";
 import {
   getToken,
   initializeAppCheck,
+  onTokenChanged,
   ReCaptchaEnterpriseProvider,
-  type AppCheck,
 } from "firebase/app-check";
 
-let appCheck: AppCheck | undefined;
+let currentToken: string | undefined;
 let initialized = false;
 
 export async function initFirebase(recaptchaSiteKey?: string): Promise<void> {
@@ -29,18 +36,26 @@ export async function initFirebase(recaptchaSiteKey?: string): Promise<void> {
   // Creates the default app, which getFunctions() (feedback) relies on too.
   const app = initializeApp(await response.json());
   if (recaptchaSiteKey) {
-    appCheck = initializeAppCheck(app, {
+    const appCheck = initializeAppCheck(app, {
       provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
       isTokenAutoRefreshEnabled: true,
     });
+    onTokenChanged(appCheck, (result) => {
+      currentToken = result.token;
+    });
+    // Prime the first token before the initial prompt goes out.
+    try {
+      currentToken = (await getToken(appCheck)).token;
+    } catch (e) {
+      console.error("App Check token fetch failed:", e);
+    }
   }
   initialized = true;
 }
 
-/** Per-request headers for the agent endpoints. Empty when App Check is not
- * configured (local dev — the emulator server skips verification). */
-export async function appCheckHeaders(): Promise<Record<string, string>> {
-  if (!appCheck) return {};
-  const { token } = await getToken(appCheck);
-  return { "X-Firebase-AppCheck": token };
+/** Synchronous per-request headers for the agent endpoints — see GOTCHA
+ * above. Empty when App Check is not configured (local dev — the emulator
+ * server skips verification). */
+export function appCheckHeaders(): Record<string, string> {
+  return currentToken ? { "X-Firebase-AppCheck": currentToken } : {};
 }
