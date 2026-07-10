@@ -135,6 +135,7 @@ export class DataParser {
    */
   public parse(): GameEntity[] {
     const nameLookup = this.buildNameLookup();
+    const fluidClasses = this.buildFluidLookup();
     const entities: GameEntity[] = [];
     this.hardDriveRecipeClasses = new Set();
 
@@ -168,7 +169,7 @@ export class DataParser {
       ) {
         for (const cls of group.Classes) {
           if (cls.mDisplayName)
-            entities.push(this.parseRecipe(cls, nc, nameLookup));
+            entities.push(this.parseRecipe(cls, nc, nameLookup, fluidClasses));
         }
       } else if (nc.includes(SCHEMATIC_PATTERN)) {
         for (const cls of group.Classes) {
@@ -211,6 +212,21 @@ export class DataParser {
     }
     this.resolveDescriptorNames(lookup);
     return lookup;
+  }
+
+  /** ClassNames of items whose form is Liquid or Gas — their amounts in
+   * Docs.json are liters and need ÷1000 scaling to m³ (issue #22). */
+  private buildFluidLookup(): Set<string> {
+    const fluids = new Set<string>();
+    for (const group of this.rawData) {
+      for (const cls of group.Classes) {
+        const form = cls.mForm as string | undefined;
+        if (form === "RF_LIQUID" || form === "RF_GAS") {
+          fluids.add(cls.ClassName);
+        }
+      }
+    }
+    return fluids;
   }
 
   /**
@@ -286,13 +302,26 @@ export class DataParser {
     item: { className: string; amount: number },
     durationSecs: number,
     lookup: Map<string, string>,
+    fluidClasses: ReadonlySet<string>,
   ): ResolvedAmount {
+    // Docs.json stores Liquid/Gas amounts in liters; the game displays m³
+    // (issue #22). Without this, every fluid in every recipe is 1000× off —
+    // and the model faithfully repeats it ("50,000/min Excited Photonic
+    // Matter" reached a real player).
+    const isFluid = fluidClasses.has(item.className);
+    const amount = isFluid ? item.amount / 1000 : item.amount;
     return {
       className: item.className,
       displayName: this.resolveName(item.className, lookup),
-      amount: item.amount,
-      ratePerMin: Math.round((item.amount / durationSecs) * 60 * 100) / 100,
+      amount,
+      ratePerMin: Math.round((amount / durationSecs) * 60 * 100) / 100,
+      ...(isFluid ? { isFluid } : {}),
     };
+  }
+
+  /** `3x Iron Ingot (30/min)` for solids, `3 m³ Crude Oil (30/min)` for fluids. */
+  private formatAmount(a: ResolvedAmount): string {
+    return `${a.amount}${a.isFluid ? " m³" : "x"} ${a.displayName} (${a.ratePerMin}/min)`;
   }
 
   private parseFuels(
@@ -441,11 +470,22 @@ export class DataParser {
     const name = cls.mDisplayName as string;
     const desc = this.cleanDescription(cls.mDescription);
     const cycleSecs = this.parseNumber(cls.mExtractCycleTime) || 1;
-    const itemsPerCycle = this.parseNumber(cls.mItemsPerCycle) || 1;
+    const rawItemsPerCycle = this.parseNumber(cls.mItemsPerCycle) || 1;
     const powerMW = this.parseNumber(cls.mPowerConsumption);
+    // Fluid extractors (Water/Oil/Resource Well) report mItemsPerCycle in
+    // liters, like recipe fluid amounts (issue #22). The ≥1000 guard protects
+    // entities with placeholder values (Resource Well Pressurizer has
+    // mItemsPerCycle=1 and no real extraction rate of its own).
+    const forms = (cls.mAllowedResourceForms as string) || "";
+    const isFluid =
+      /RF_LIQUID|RF_GAS/.test(forms) &&
+      !forms.includes("RF_SOLID") &&
+      rawItemsPerCycle >= 1000;
+    const itemsPerCycle = isFluid ? rawItemsPerCycle / 1000 : rawItemsPerCycle;
     const ratePerMin = Math.round(
       ((itemsPerCycle / cycleSecs) * 60 * 100) / 100,
     );
+    const rateUnit = isFluid ? " m³/min" : "/min";
 
     return {
       className: cls.ClassName,
@@ -463,7 +503,7 @@ export class DataParser {
       embeddingText: [
         `Building: ${name} (Resource Extractor)`,
         `Description: ${desc}`,
-        `Base extraction rate: ${ratePerMin}/min`,
+        `Base extraction rate: ${ratePerMin}${rateUnit}`,
         `Power consumption: ${powerMW} MW`,
       ].join("\n"),
     };
@@ -473,6 +513,7 @@ export class DataParser {
     cls: RawClass,
     nativeClass: string,
     nameLookup: Map<string, string>,
+    fluidClasses: ReadonlySet<string>,
   ): RecipeEntity {
     const name = cls.mDisplayName as string;
     const durationSecs = this.parseNumber(cls.mManufactoringDuration) || 1;
@@ -481,10 +522,13 @@ export class DataParser {
 
     const ingredients = parseItemAmountList(
       (cls.mIngredients as string) || "",
-    ).map((item) => this.resolveAmount(item, durationSecs, nameLookup));
+    ).map((item) =>
+      this.resolveAmount(item, durationSecs, nameLookup, fluidClasses),
+    );
 
     const products = parseItemAmountList((cls.mProduct as string) || "").map(
-      (item) => this.resolveAmount(item, durationSecs, nameLookup),
+      (item) =>
+        this.resolveAmount(item, durationSecs, nameLookup, fluidClasses),
     );
 
     const producedIn = parseClassList((cls.mProducedIn as string) || "")
@@ -498,11 +542,11 @@ export class DataParser {
       lines.push(`Produced in: ${producedIn.join(", ")}`);
     if (ingredients.length > 0)
       lines.push(
-        `Ingredients: ${ingredients.map((i) => `${i.amount}x ${i.displayName} (${i.ratePerMin}/min)`).join(", ")}`,
+        `Ingredients: ${ingredients.map((i) => this.formatAmount(i)).join(", ")}`,
       );
     if (products.length > 0)
       lines.push(
-        `Products: ${products.map((p) => `${p.amount}x ${p.displayName} (${p.ratePerMin}/min)`).join(", ")}`,
+        `Products: ${products.map((p) => this.formatAmount(p)).join(", ")}`,
       );
     lines.push(`Cycle time: ${durationSecs}s`);
 

@@ -38,5 +38,15 @@
     "testCaseId": "base_building_milestone",
     "input": "What does the Base Building milestone unlock?",
     "reference": "Base Building is a Tier 1 milestone that costs 200x Concrete, 100x Iron Plate, and 100x Iron Rod. It unlocks the Lookout Tower, Foundation (1m, 2m, 4m), Ramp (1m, 2m, 4m), and Basic Wall (4m, 1m)."
+  },
+  {
+    "testCaseId": "nuclear_fuel_rod_types",
+    "input": "What kind of nuclear fuel rods can I provide to nuclear power plant?",
+    "reference": "The Nuclear Power Plant (2500 MW) accepts three fuel rod types. (1) Uranium Fuel Rod: 750,000 MJ, produces Uranium Waste; made in a Manufacturer (150s): 50x Encased Uranium Cell (20/min), 3x Encased Industrial Beam (1.2/min), 5x Electromagnetic Control Rod (2/min) → 1 rod (0.4/min). (2) Plutonium Fuel Rod: 1,500,000 MJ, produces Plutonium Waste; Manufacturer (240s): 30x Encased Plutonium Cell (7.5/min), 18x Steel Beam (4.5/min), 6x Electromagnetic Control Rod (1.5/min), 10x Heat Sink (2.5/min) → 1 rod (0.25/min). (3) Ficsonium Fuel Rod: 150,000 MJ, no waste; Quantum Encoder (24s): 2x Ficsonium (5/min), 2x Electromagnetic Control Rod (5/min), 40x Ficsite Trigon (100/min), 20 m³ Excited Photonic Matter (50/min) → 1 rod (2.5/min) + 20 m³ Dark Matter Residue (50/min). Fluid rates are in m³ — production turn 2026-07-08 repeated 1000× inflated values (issue #22)."
+  },
+  {
+    "testCaseId": "fluid_and_solid_input_machines",
+    "input": "What other machines accept both fluid and solid inputs?",
+    "reference": "Machines with both Conveyor (solid) and Pipeline (fluid) ports: Refinery (30 MW), Blender (75 MW), Packager (10 MW), Converter, Quantum Encoder, and Particle Accelerator (some recipes); plus the Coal-Powered Generator (fuel + 45 m³/min Water) and Nuclear Power Plant (fuel rods + 240 m³/min Water). Any recipe examples given must come from tool results — a production turn 2026-07-08 invented a Ficsite Ingot (Iron) recipe using Iron Ore and Nitrogen Gas; the real recipe is 4x Reanimated SAM (40/min) + 24x Iron Ingot (240/min) → 1x Ficsite Ingot (10/min) in the Converter, no gas involved."
   }
 ]

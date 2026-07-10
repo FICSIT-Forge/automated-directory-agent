@@ -3,8 +3,12 @@
 export interface ResolvedAmount {
   className: string;
   displayName: string;
+  /** In-game units: item count for solids, m³ for fluids/gases (issue #22 —
+   * Docs.json stores fluid amounts in liters; the parser scales ÷1000). */
   amount: number;
   ratePerMin: number;
+  /** True when the item's form is Liquid/Gas — render as m³, not "x". */
+  isFluid?: boolean;
 }
 
 export interface ItemMetadata {
