@@ -153,12 +153,6 @@ onMounted(async () => {
         >
           <template #footer>
             <div class="flex items-center gap-1 min-w-0">
-              <UButton
-                icon="i-lucide-paperclip"
-                color="neutral"
-                variant="ghost"
-                size="sm"
-              />
               <span class="text-[11px] text-dimmed truncate">
                 Questions &amp; answers are logged to improve ADAgent — please
                 don't include personal information.
